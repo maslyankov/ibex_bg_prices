@@ -26,7 +26,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up IBEX BG sensor based on a config entry."""
-    api = IbexBGAPI()
+    # Get the shared API client from the integration data
+    api = hass.data[DOMAIN][config_entry.entry_id]["api"]
 
     coordinator = IbexBGDataUpdateCoordinator(hass, api)
 
