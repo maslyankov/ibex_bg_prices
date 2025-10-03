@@ -25,6 +25,10 @@ coverage.xml
 # HACS
 .hacs.json
 
+# Development files (excluded from HACS distribution)
+main.py
+ibex_bg_prices.json
+
 # IDE
 .vscode/
 .idea/
