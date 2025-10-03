@@ -4,6 +4,29 @@ DOMAIN = "ibex_bg"
 DEFAULT_NAME = "IBEX BG"
 DEFAULT_SCAN_INTERVAL = 300  # 5 minutes
 
+# Configuration options
+CONF_UPDATE_INTERVAL = "update_interval"
+CONF_UPDATE_START_TIME = "update_start_time"
+CONF_UPDATE_END_TIME = "update_end_time"
+CONF_UPDATE_DAYS = "update_days"
+
+# Default configuration values
+DEFAULT_UPDATE_INTERVAL = 30  # minutes
+DEFAULT_UPDATE_START_TIME = "00:00"
+DEFAULT_UPDATE_END_TIME = "23:59"
+DEFAULT_UPDATE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+# Available days
+AVAILABLE_DAYS = [
+    "monday",
+    "tuesday", 
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday"
+]
+
 # API Configuration
 API_URL = "https://ibex.bg/Ext/IDM_Homepage/fetch_dam.php"
 API_PARAMS = {"lang": "bg", "num": "73"}

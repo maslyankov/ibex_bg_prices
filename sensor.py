@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, time
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -15,7 +15,18 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .api import IbexBGAPI
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_UPDATE_DAYS,
+    CONF_UPDATE_END_TIME,
+    CONF_UPDATE_INTERVAL,
+    CONF_UPDATE_START_TIME,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_DAYS,
+    DEFAULT_UPDATE_END_TIME,
+    DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_START_TIME,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +40,7 @@ async def async_setup_entry(
     # Get the shared API client from the integration data
     api = hass.data[DOMAIN][config_entry.entry_id]["api"]
 
-    coordinator = IbexBGDataUpdateCoordinator(hass, api)
+    coordinator = IbexBGDataUpdateCoordinator(hass, api, config_entry)
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -47,18 +58,70 @@ async def async_setup_entry(
 class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the IBEX BG API."""
 
-    def __init__(self, hass: HomeAssistant, api: IbexBGAPI) -> None:
+    def __init__(self, hass: HomeAssistant, api: IbexBGAPI, config_entry: ConfigEntry) -> None:
         """Initialize."""
         self.api = api
+        self.config_entry = config_entry
+        
+        # Get configuration
+        update_interval = config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+        
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(minutes=update_interval),
         )
+
+    def _should_update(self) -> bool:
+        """Check if we should update based on time and day constraints."""
+        now = datetime.now()
+        current_time = now.time()
+        current_day = now.strftime("%A").lower()
+        
+        # Get configuration
+        start_time_str = self.config_entry.data.get(CONF_UPDATE_START_TIME, DEFAULT_UPDATE_START_TIME)
+        end_time_str = self.config_entry.data.get(CONF_UPDATE_END_TIME, DEFAULT_UPDATE_END_TIME)
+        update_days = self.config_entry.data.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
+        
+        # Parse time strings
+        try:
+            start_time = datetime.strptime(start_time_str, "%H:%M").time()
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+        except ValueError:
+            _LOGGER.warning("Invalid time format in configuration, using defaults")
+            start_time = datetime.strptime(DEFAULT_UPDATE_START_TIME, "%H:%M").time()
+            end_time = datetime.strptime(DEFAULT_UPDATE_END_TIME, "%H:%M").time()
+        
+        # Check if current day is in update days
+        if current_day not in update_days:
+            return False
+        
+        # Check if current time is within the update window
+        if start_time <= end_time:
+            # Normal case: start_time <= end_time (e.g., 09:00 to 17:00)
+            return start_time <= current_time <= end_time
+        else:
+            # Overnight case: start_time > end_time (e.g., 22:00 to 06:00)
+            return current_time >= start_time or current_time <= end_time
 
     async def _async_update_data(self) -> dict:
         """Update data via library."""
+        # Check if we should update based on schedule
+        if not self._should_update():
+            _LOGGER.debug("Skipping update - outside configured time window")
+            # Return existing data if available, otherwise return empty data
+            if hasattr(self, 'data') and self.data:
+                return self.data
+            return {
+                "prices": [],
+                "current_price": None,
+                "average_price": None,
+                "min_price": None,
+                "max_price": None,
+                "total_volume": None,
+            }
+        
         try:
             data = await self.api.async_get_prices()
             if data is None:
