@@ -1,0 +1,9 @@
+{
+  "name": "IBEX BG",
+  "content_in_root": false,
+  "filename": "ibex_bg",
+  "country": ["BG"],
+  "homeassistant": "2023.1.0",
+  "render_readme": true,
+  "iot_class": "Cloud Polling"
+}

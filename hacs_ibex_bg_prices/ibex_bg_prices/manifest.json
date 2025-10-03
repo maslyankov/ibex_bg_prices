@@ -1,0 +1,10 @@
+{
+  "domain": "ibex_bg",
+  "name": "IBEX BG",
+  "documentation": "https://github.com/maslyankov/ibex_bg_prices",
+  "dependencies": [],
+  "codeowners": ["@maslyankov"],
+  "requirements": ["aiohttp>=3.8.0"],
+  "version": "1.0.0",
+  "iot_class": "cloud_polling"
+}
