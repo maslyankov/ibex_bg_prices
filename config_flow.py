@@ -44,13 +44,17 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     try:
         prices = await api.async_get_prices()
         if prices is None:
-            raise CannotConnect
+            raise CannotConnect("Failed to fetch prices from IBEX API")
         await api.async_close()
     except Exception as err:
         _LOGGER.error("Validation error: %s", err)
-        raise CannotConnect from err
+        raise CannotConnect(f"Failed to connect to IBEX API: {err}") from err
 
-    return {"title": "IBEX BG"}
+    # Generate a unique title for multiple instances
+    instance_count = len([entry for entry in hass.config_entries.async_entries(DOMAIN)])
+    title = f"IBEX BG" if instance_count == 0 else f"IBEX BG {instance_count + 1}"
+    
+    return {"title": title}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -62,6 +66,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
+        # Allow multiple instances - don't set unique_id to allow multiple configs
         if user_input is None:
             return self.async_show_form(
                 step_id="user",
@@ -82,24 +87,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required(
                             CONF_UPDATE_DAYS,
                             default=DEFAULT_UPDATE_DAYS
-                        ): vol.All(vol.Coerce(list), [vol.In(AVAILABLE_DAYS)]),
+                        ): vol.All(vol.Coerce(list), vol.Length(min=1), [vol.In(AVAILABLE_DAYS)]),
                     }
                 ),
             )
 
         errors = {}
 
+        # Validate time format
         try:
-            info = await validate_input(self.hass, user_input)
-        except CannotConnect:
-            errors["base"] = "cannot_connect"
-        except InvalidAuth:
-            errors["base"] = "invalid_auth"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
-            errors["base"] = "unknown"
-        else:
-            return self.async_create_entry(title=info["title"], data=user_input)
+            from datetime import datetime
+            datetime.strptime(user_input[CONF_UPDATE_START_TIME], "%H:%M")
+            datetime.strptime(user_input[CONF_UPDATE_END_TIME], "%H:%M")
+        except ValueError:
+            errors["base"] = "invalid_time_format"
+
+        # Validate days selection
+        if not user_input.get(CONF_UPDATE_DAYS):
+            errors["base"] = "no_days_selected"
+
+        if not errors:
+            try:
+                info = await validate_input(self.hass, user_input)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
             step_id="user",
@@ -120,7 +138,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_UPDATE_DAYS,
                         default=user_input.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
-                    ): vol.All(vol.Coerce(list), [vol.In(AVAILABLE_DAYS)]),
+                    ): vol.All(vol.Coerce(list), vol.Length(min=1), [vol.In(AVAILABLE_DAYS)]),
                 }
             ),
             errors=errors,
