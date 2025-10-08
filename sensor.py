@@ -18,14 +18,14 @@ from homeassistant.helpers.update_coordinator import (
 from .api import IbexBGAPI
 from .const import (
     CONF_UPDATE_DAYS,
-    CONF_UPDATE_END_TIME,
-    CONF_UPDATE_INTERVAL,
-    CONF_UPDATE_START_TIME,
+    CONF_UPDATE_TIME,
+    CONF_RETRY_ATTEMPTS,
+    CONF_RETRY_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_UPDATE_DAYS,
-    DEFAULT_UPDATE_END_TIME,
-    DEFAULT_UPDATE_INTERVAL,
-    DEFAULT_UPDATE_START_TIME,
+    DEFAULT_UPDATE_TIME,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_INTERVAL,
     DOMAIN,
 )
 
@@ -66,71 +66,95 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self.api = api
         self.config_entry = config_entry
+        self.last_fetch_date = None
+        self.retry_count = 0
         
         # Get configuration
-        update_interval = config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+        update_time_str = config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
+        self.retry_attempts = config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+        self.retry_interval = config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
         
+        # Parse update time
+        try:
+            self.update_time = datetime.strptime(update_time_str, "%H:%M").time()
+        except ValueError:
+            _LOGGER.warning("Invalid time format in configuration, using default")
+            self.update_time = datetime.strptime(DEFAULT_UPDATE_TIME, "%H:%M").time()
+        
+        # Set a long update interval since we only fetch once per day
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=update_interval),
+            update_interval=timedelta(hours=1),  # Check every hour if we should fetch
         )
 
-    def _should_update(self) -> bool:
-        """Check if we should update based on time and day constraints."""
+    def _should_fetch_today(self) -> bool:
+        """Check if we should fetch data today based on configuration."""
         now = datetime.now()
-        current_time = now.time()
         current_day = now.strftime("%A").lower()
-        
-        # Get configuration
-        start_time_str = self.config_entry.data.get(CONF_UPDATE_START_TIME, DEFAULT_UPDATE_START_TIME)
-        end_time_str = self.config_entry.data.get(CONF_UPDATE_END_TIME, DEFAULT_UPDATE_END_TIME)
         update_days = self.config_entry.data.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
         
-        # Parse time strings
-        try:
-            start_time = datetime.strptime(start_time_str, "%H:%M").time()
-            end_time = datetime.strptime(end_time_str, "%H:%M").time()
-        except ValueError:
-            _LOGGER.warning("Invalid time format in configuration, using defaults")
-            start_time = datetime.strptime(DEFAULT_UPDATE_START_TIME, "%H:%M").time()
-            end_time = datetime.strptime(DEFAULT_UPDATE_END_TIME, "%H:%M").time()
-        
         # Check if current day is in update days
-        if current_day not in update_days:
-            return False
+        return current_day in update_days
+
+    def _is_update_time(self) -> bool:
+        """Check if current time is the configured update time."""
+        now = datetime.now()
+        current_time = now.time()
         
-        # Check if current time is within the update window
-        if start_time <= end_time:
-            # Normal case: start_time <= end_time (e.g., 09:00 to 17:00)
-            return start_time <= current_time <= end_time
-        else:
-            # Overnight case: start_time > end_time (e.g., 22:00 to 06:00)
-            return current_time >= start_time or current_time <= end_time
+        # Check if we're within 5 minutes of the update time
+        time_diff = abs((datetime.combine(now.date(), current_time) - 
+                        datetime.combine(now.date(), self.update_time)).total_seconds())
+        return time_diff <= 300  # 5 minutes tolerance
+
+    def _should_retry(self) -> bool:
+        """Check if we should retry fetching data."""
+        return self.retry_count < self.retry_attempts
 
     async def _async_update_data(self) -> dict:
         """Update data via library."""
-        # Check if we should update based on schedule
-        if not self._should_update():
-            _LOGGER.debug("Skipping update - outside configured time window")
-            # Return existing data if available, otherwise return empty data
-            if hasattr(self, 'data') and self.data:
-                return self.data
-            return {
-                "prices": [],
-                "current_price": None,
-                "average_price": None,
-                "min_price": None,
-                "max_price": None,
-                "total_volume": None,
-            }
+        now = datetime.now()
+        today = now.date()
+        
+        # Check if we should fetch today
+        if not self._should_fetch_today():
+            _LOGGER.debug("Skipping update - not a configured update day")
+            return self._get_existing_data()
+        
+        # Check if we already fetched today and it's not retry time
+        if (self.last_fetch_date == today and 
+            not self._is_update_time() and 
+            not self._should_retry()):
+            _LOGGER.debug("Skipping update - already fetched today and not retry time")
+            return self._get_existing_data()
+        
+        # Check if it's update time or retry time
+        if not self._is_update_time() and not self._should_retry():
+            _LOGGER.debug("Skipping update - not update time and not retry time")
+            return self._get_existing_data()
         
         try:
+            _LOGGER.info(f"Fetching IBEX BG prices (attempt {self.retry_count + 1}/{self.retry_attempts})")
             data = await self.api.async_get_prices()
-            if data is None:
-                raise UpdateFailed("Failed to fetch IBEX BG prices")
             
+            if data is None or not data:
+                if self._should_retry():
+                    self.retry_count += 1
+                    _LOGGER.warning(f"No data received, will retry in {self.retry_interval} minutes (attempt {self.retry_count}/{self.retry_attempts})")
+                    # Schedule retry
+                    self.update_interval = timedelta(minutes=self.retry_interval)
+                    raise UpdateFailed("No data received, will retry")
+                else:
+                    _LOGGER.error("No data received after all retry attempts")
+                    raise UpdateFailed("Failed to fetch IBEX BG prices after all retries")
+            
+            # Success - reset retry count and update last fetch date
+            self.retry_count = 0
+            self.last_fetch_date = today
+            self.update_interval = timedelta(hours=1)  # Back to hourly checks
+            
+            _LOGGER.info("Successfully fetched IBEX BG prices")
             return {
                 "prices": data,
                 "current_price": self.api.get_current_price(data),
@@ -144,8 +168,35 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                 "time_of_lowest_price": self.api.get_time_of_lowest_price(data),
                 "prices_attributes": self.api.get_prices_attributes(data),
             }
+        except UpdateFailed:
+            raise
         except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}")
+            if self._should_retry():
+                self.retry_count += 1
+                _LOGGER.warning(f"Error fetching data, will retry in {self.retry_interval} minutes: {err}")
+                self.update_interval = timedelta(minutes=self.retry_interval)
+                raise UpdateFailed(f"Error communicating with API, will retry: {err}")
+            else:
+                _LOGGER.error(f"Error communicating with API after all retries: {err}")
+                raise UpdateFailed(f"Error communicating with API: {err}")
+
+    def _get_existing_data(self) -> dict:
+        """Return existing data if available, otherwise return empty data."""
+        if hasattr(self, 'data') and self.data:
+            return self.data
+        return {
+            "prices": [],
+            "current_price": None,
+            "average_price": None,
+            "min_price": None,
+            "max_price": None,
+            "total_volume": None,
+            "next_hour_price": None,
+            "current_percentage": None,
+            "time_of_highest_price": None,
+            "time_of_lowest_price": None,
+            "prices_attributes": [],
+        }
 
 
 class IbexBGSensor(CoordinatorEntity, SensorEntity):

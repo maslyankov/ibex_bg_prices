@@ -14,13 +14,13 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import (
     AVAILABLE_DAYS,
     CONF_UPDATE_DAYS,
-    CONF_UPDATE_END_TIME,
-    CONF_UPDATE_INTERVAL,
-    CONF_UPDATE_START_TIME,
+    CONF_UPDATE_TIME,
+    CONF_RETRY_ATTEMPTS,
+    CONF_RETRY_INTERVAL,
     DEFAULT_UPDATE_DAYS,
-    DEFAULT_UPDATE_END_TIME,
-    DEFAULT_UPDATE_INTERVAL,
-    DEFAULT_UPDATE_START_TIME,
+    DEFAULT_UPDATE_TIME,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_INTERVAL,
     DOMAIN,
 )
 
@@ -68,37 +68,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         # Allow multiple instances - don't set unique_id to allow multiple configs
         if user_input is None:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            CONF_UPDATE_INTERVAL,
-                            default=DEFAULT_UPDATE_INTERVAL
-                        ): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
-                        vol.Required(
-                            CONF_UPDATE_START_TIME,
-                            default=DEFAULT_UPDATE_START_TIME
-                        ): str,
-                        vol.Required(
-                            CONF_UPDATE_END_TIME,
-                            default=DEFAULT_UPDATE_END_TIME
-                        ): str,
-                        vol.Required(
-                            CONF_UPDATE_DAYS,
-                            default="monday,tuesday,wednesday,thursday,friday,saturday,sunday"
-                        ): str,
-                    }
-                ),
-            )
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required(
+                                CONF_UPDATE_TIME,
+                                default=DEFAULT_UPDATE_TIME
+                            ): str,
+                            vol.Required(
+                                CONF_UPDATE_DAYS,
+                                default="monday,tuesday,wednesday,thursday,friday,saturday,sunday"
+                            ): str,
+                            vol.Required(
+                                CONF_RETRY_ATTEMPTS,
+                                default=DEFAULT_RETRY_ATTEMPTS
+                            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+                            vol.Required(
+                                CONF_RETRY_INTERVAL,
+                                default=DEFAULT_RETRY_INTERVAL
+                            ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
+                        }
+                    ),
+                )
 
         errors = {}
 
         # Validate time format
         try:
             from datetime import datetime
-            datetime.strptime(user_input[CONF_UPDATE_START_TIME], "%H:%M")
-            datetime.strptime(user_input[CONF_UPDATE_END_TIME], "%H:%M")
+            datetime.strptime(user_input[CONF_UPDATE_TIME], "%H:%M")
         except ValueError:
             errors["base"] = "invalid_time_format"
 
@@ -135,21 +134,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_UPDATE_INTERVAL,
-                        default=user_input.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
-                    vol.Required(
-                        CONF_UPDATE_START_TIME,
-                        default=user_input.get(CONF_UPDATE_START_TIME, DEFAULT_UPDATE_START_TIME)
-                    ): str,
-                    vol.Required(
-                        CONF_UPDATE_END_TIME,
-                        default=user_input.get(CONF_UPDATE_END_TIME, DEFAULT_UPDATE_END_TIME)
+                        CONF_UPDATE_TIME,
+                        default=user_input.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
                     ): str,
                     vol.Required(
                         CONF_UPDATE_DAYS,
                         default=user_input.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
                     ): str,
+                    vol.Required(
+                        CONF_RETRY_ATTEMPTS,
+                        default=user_input.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+                    vol.Required(
+                        CONF_RETRY_INTERVAL,
+                        default=user_input.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
+                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                 }
             ),
             errors=errors,
