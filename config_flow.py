@@ -86,8 +86,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         ): str,
                         vol.Required(
                             CONF_UPDATE_DAYS,
-                            default=DEFAULT_UPDATE_DAYS
-                        ): vol.All(vol.Coerce(list), vol.Length(min=1)),
+                            default="monday,tuesday,wednesday,thursday,friday,saturday,sunday"
+                        ): str,
                     }
                 ),
             )
@@ -103,11 +103,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_time_format"
 
         # Validate days selection
-        days = user_input.get(CONF_UPDATE_DAYS, [])
-        if not days:
+        days_str = user_input.get(CONF_UPDATE_DAYS, "")
+        if not days_str:
             errors["base"] = "no_days_selected"
-        elif not all(day in AVAILABLE_DAYS for day in days):
-            errors["base"] = "invalid_days_selected"
+        else:
+            # Convert comma-separated string to list
+            days = [day.strip() for day in days_str.split(",") if day.strip()]
+            if not days:
+                errors["base"] = "no_days_selected"
+            elif not all(day in AVAILABLE_DAYS for day in days):
+                errors["base"] = "invalid_days_selected"
+            else:
+                # Convert back to list for storage
+                user_input[CONF_UPDATE_DAYS] = days
 
         if not errors:
             try:
@@ -140,8 +148,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ): str,
                     vol.Required(
                         CONF_UPDATE_DAYS,
-                        default=user_input.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
-                    ): vol.All(vol.Coerce(list), vol.Length(min=1)),
+                        default=user_input.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
+                    ): str,
                 }
             ),
             errors=errors,
