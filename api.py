@@ -62,13 +62,27 @@ class IbexBGAPI:
             return None
 
     def get_current_price(self, data: list[dict[str, Any]]) -> float | None:
-        """Get the most recent price from the data."""
+        """Get the price for the current hour."""
         if not data:
             return None
         
-        # Sort by date to get the most recent
+        from datetime import datetime
+        now = datetime.now()
+        current_hour = now.replace(minute=0, second=0, microsecond=0)
+        
+        # Find the price for the current hour
+        for record in data:
+            try:
+                # Parse the date from the record
+                record_date = datetime.fromisoformat(record.get("date", "").replace("Z", "+00:00"))
+                if record_date.hour == current_hour.hour and record_date.date() == current_hour.date():
+                    return record.get("price")
+            except (ValueError, TypeError):
+                continue
+        
+        # If no exact match, return the most recent price
         sorted_data = sorted(data, key=lambda x: x.get("date", ""), reverse=True)
-        return sorted_data[0].get("price")
+        return sorted_data[0].get("price") if sorted_data else None
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
         """Calculate average price from the data."""
@@ -101,3 +115,81 @@ class IbexBGAPI:
         
         volumes = [record.get("volume", 0) for record in data if record.get("volume")]
         return sum(volumes) if volumes else None
+
+    def get_next_hour_price(self, data: list[dict[str, Any]]) -> float | None:
+        """Get the price for the next hour."""
+        if not data:
+            return None
+        
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        
+        # Find the price for the next hour
+        for record in data:
+            try:
+                record_date = datetime.fromisoformat(record.get("date", "").replace("Z", "+00:00"))
+                if record_date.hour == next_hour.hour and record_date.date() == next_hour.date():
+                    return record.get("price")
+            except (ValueError, TypeError):
+                continue
+        
+        return None
+
+    def get_current_percentage(self, data: list[dict[str, Any]]) -> float | None:
+        """Get current price as percentage of highest price."""
+        if not data:
+            return None
+        
+        current_price = self.get_current_price(data)
+        max_price = self.get_max_price(data)
+        
+        if current_price is None or max_price is None or max_price == 0:
+            return None
+        
+        return (current_price / max_price) * 100
+
+    def get_time_of_highest_price(self, data: list[dict[str, Any]]) -> str | None:
+        """Get the time of the highest price."""
+        if not data:
+            return None
+        
+        max_price = self.get_max_price(data)
+        if max_price is None:
+            return None
+        
+        for record in data:
+            if record.get("price") == max_price:
+                return record.get("date")
+        
+        return None
+
+    def get_time_of_lowest_price(self, data: list[dict[str, Any]]) -> str | None:
+        """Get the time of the lowest price."""
+        if not data:
+            return None
+        
+        min_price = self.get_min_price(data)
+        if min_price is None:
+            return None
+        
+        for record in data:
+            if record.get("price") == min_price:
+                return record.get("date")
+        
+        return None
+
+    def get_prices_attributes(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Get formatted prices for attributes (24h forecast)."""
+        if not data:
+            return []
+        
+        # Sort by date and format for attributes
+        sorted_data = sorted(data, key=lambda x: x.get("date", ""))
+        return [
+            {
+                "time": record.get("date"),
+                "price": record.get("price", 0)
+            }
+            for record in sorted_data
+        ]

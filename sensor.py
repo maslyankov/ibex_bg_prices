@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, time
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -46,11 +47,14 @@ async def async_setup_entry(
 
     async_add_entities(
         [
-            IbexCurrentPriceSensor(coordinator),
             IbexAveragePriceSensor(coordinator),
-            IbexMinPriceSensor(coordinator),
-            IbexMaxPriceSensor(coordinator),
-            IbexTotalVolumeSensor(coordinator),
+            IbexHighestPriceSensor(coordinator),
+            IbexLowestPriceSensor(coordinator),
+            IbexCurrentPriceSensor(coordinator),
+            IbexCurrentPercentageSensor(coordinator),
+            IbexNextHourPriceSensor(coordinator),
+            IbexTimeOfHighestPriceSensor(coordinator),
+            IbexTimeOfLowestPriceSensor(coordinator),
         ]
     )
 
@@ -134,6 +138,11 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                 "min_price": self.api.get_min_price(data),
                 "max_price": self.api.get_max_price(data),
                 "total_volume": self.api.get_total_volume(data),
+                "next_hour_price": self.api.get_next_hour_price(data),
+                "current_percentage": self.api.get_current_percentage(data),
+                "time_of_highest_price": self.api.get_time_of_highest_price(data),
+                "time_of_lowest_price": self.api.get_time_of_lowest_price(data),
+                "prices_attributes": self.api.get_prices_attributes(data),
             }
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}")
@@ -153,10 +162,59 @@ class IbexBGSensor(CoordinatorEntity, SensorEntity):
         }
 
 
+class IbexAveragePriceSensor(IbexBGSensor):
+    """Sensor for average IBEX price."""
+
+    _attr_name = "Average Day-Ahead Electricity Price Today"
+    _attr_unique_id = "ibex_average_price"
+    _attr_native_unit_of_measurement = "BGN/MWh"
+    _attr_icon = "mdi:chart-line"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the average price."""
+        return self.coordinator.data.get("average_price")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        return {
+            "prices": self.coordinator.data.get("prices_attributes", []),
+        }
+
+
+class IbexHighestPriceSensor(IbexBGSensor):
+    """Sensor for highest IBEX price."""
+
+    _attr_name = "Highest Day-Ahead Electricity Price Today"
+    _attr_unique_id = "ibex_highest_price"
+    _attr_native_unit_of_measurement = "BGN/MWh"
+    _attr_icon = "mdi:arrow-up"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the highest price."""
+        return self.coordinator.data.get("max_price")
+
+
+class IbexLowestPriceSensor(IbexBGSensor):
+    """Sensor for lowest IBEX price."""
+
+    _attr_name = "Lowest Day-Ahead Electricity Price Today"
+    _attr_unique_id = "ibex_lowest_price"
+    _attr_native_unit_of_measurement = "BGN/MWh"
+    _attr_icon = "mdi:arrow-down"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the lowest price."""
+        return self.coordinator.data.get("min_price")
+
+
 class IbexCurrentPriceSensor(IbexBGSensor):
     """Sensor for current IBEX price."""
 
-    _attr_name = "IBEX Current Price"
+    _attr_name = "Current Day-Ahead Electricity Price"
     _attr_unique_id = "ibex_current_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:currency-usd"
@@ -167,57 +225,55 @@ class IbexCurrentPriceSensor(IbexBGSensor):
         return self.coordinator.data.get("current_price")
 
 
-class IbexAveragePriceSensor(IbexBGSensor):
-    """Sensor for average IBEX price."""
+class IbexCurrentPercentageSensor(IbexBGSensor):
+    """Sensor for current price percentage."""
 
-    _attr_name = "IBEX Average Price"
-    _attr_unique_id = "ibex_average_price"
+    _attr_name = "Current Percentage Relative To Highest Electricity Price Of The Day"
+    _attr_unique_id = "ibex_current_percentage"
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:percent"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current percentage."""
+        return self.coordinator.data.get("current_percentage")
+
+
+class IbexNextHourPriceSensor(IbexBGSensor):
+    """Sensor for next hour IBEX price."""
+
+    _attr_name = "Next Hour Day-Ahead Electricity Price"
+    _attr_unique_id = "ibex_next_hour_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
-    _attr_icon = "mdi:chart-line"
+    _attr_icon = "mdi:clock-forward"
 
     @property
     def native_value(self) -> float | None:
-        """Return the average price."""
-        return self.coordinator.data.get("average_price")
+        """Return the next hour price."""
+        return self.coordinator.data.get("next_hour_price")
 
 
-class IbexMinPriceSensor(IbexBGSensor):
-    """Sensor for minimum IBEX price."""
+class IbexTimeOfHighestPriceSensor(IbexBGSensor):
+    """Sensor for time of highest price."""
 
-    _attr_name = "IBEX Min Price"
-    _attr_unique_id = "ibex_min_price"
-    _attr_native_unit_of_measurement = "BGN/MWh"
-    _attr_icon = "mdi:arrow-down"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the minimum price."""
-        return self.coordinator.data.get("min_price")
-
-
-class IbexMaxPriceSensor(IbexBGSensor):
-    """Sensor for maximum IBEX price."""
-
-    _attr_name = "IBEX Max Price"
-    _attr_unique_id = "ibex_max_price"
-    _attr_native_unit_of_measurement = "BGN/MWh"
-    _attr_icon = "mdi:arrow-up"
+    _attr_name = "Time Of Highest Energy Price Today"
+    _attr_unique_id = "ibex_time_of_highest_price"
+    _attr_icon = "mdi:clock-time-four"
 
     @property
-    def native_value(self) -> float | None:
-        """Return the maximum price."""
-        return self.coordinator.data.get("max_price")
+    def native_value(self) -> str | None:
+        """Return the time of highest price."""
+        return self.coordinator.data.get("time_of_highest_price")
 
 
-class IbexTotalVolumeSensor(IbexBGSensor):
-    """Sensor for total IBEX volume."""
+class IbexTimeOfLowestPriceSensor(IbexBGSensor):
+    """Sensor for time of lowest price."""
 
-    _attr_name = "IBEX Total Volume"
-    _attr_unique_id = "ibex_total_volume"
-    _attr_native_unit_of_measurement = "MWh"
-    _attr_icon = "mdi:chart-bar"
+    _attr_name = "Time Of Lowest Energy Price Today"
+    _attr_unique_id = "ibex_time_of_lowest_price"
+    _attr_icon = "mdi:clock-time-one"
 
     @property
-    def native_value(self) -> float | None:
-        """Return the total volume."""
-        return self.coordinator.data.get("total_volume")
+    def native_value(self) -> str | None:
+        """Return the time of lowest price."""
+        return self.coordinator.data.get("time_of_lowest_price")
