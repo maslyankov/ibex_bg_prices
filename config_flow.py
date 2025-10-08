@@ -87,7 +87,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required(
                             CONF_UPDATE_DAYS,
                             default=DEFAULT_UPDATE_DAYS
-                        ): vol.All(vol.Coerce(list), vol.Length(min=1), [vol.In(AVAILABLE_DAYS)]),
+                        ): vol.All(vol.Coerce(list), vol.Length(min=1)),
                     }
                 ),
             )
@@ -103,8 +103,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "invalid_time_format"
 
         # Validate days selection
-        if not user_input.get(CONF_UPDATE_DAYS):
+        days = user_input.get(CONF_UPDATE_DAYS, [])
+        if not days:
             errors["base"] = "no_days_selected"
+        elif not all(day in AVAILABLE_DAYS for day in days):
+            errors["base"] = "invalid_days_selected"
 
         if not errors:
             try:
@@ -138,7 +141,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(
                         CONF_UPDATE_DAYS,
                         default=user_input.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
-                    ): vol.All(vol.Coerce(list), vol.Length(min=1), [vol.In(AVAILABLE_DAYS)]),
+                    ): vol.All(vol.Coerce(list), vol.Length(min=1)),
                 }
             ),
             errors=errors,
