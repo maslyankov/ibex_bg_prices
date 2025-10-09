@@ -124,31 +124,28 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Skipping update - not a configured update day")
             return self._get_existing_data()
         
-        # Check if we already fetched today and it's not retry time
-        if (self.last_fetch_date == today and 
-            not self._is_update_time() and 
-            not self._should_retry()):
-            _LOGGER.debug("Skipping data fetch - already fetched today and not retry time")
-            # Even if we don't fetch new data, we should recalculate current price
-            # in case the time period has changed
-            existing_data = self._get_existing_data()
-            if existing_data.get("prices"):
-                _LOGGER.debug("Recalculating current price with existing data")
-                existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
-                existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
-                existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
-            return existing_data
+        # Always recalculate current price with existing data first
+        existing_data = self._get_existing_data()
+        if existing_data.get("prices"):
+            _LOGGER.debug("Recalculating current price with existing data")
+            existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
+            existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
+            existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
         
-        # Check if it's update time or retry time
-        if not self._is_update_time() and not self._should_retry():
-            _LOGGER.debug("Skipping data fetch - not update time and not retry time")
-            # Even if we don't fetch new data, we should recalculate current price
-            existing_data = self._get_existing_data()
-            if existing_data.get("prices"):
-                _LOGGER.debug("Recalculating current price with existing data")
-                existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
-                existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
-                existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
+        # Check if we should fetch new data
+        should_fetch_new_data = False
+        
+        # Fetch new data if:
+        # 1. We haven't fetched today yet, OR
+        # 2. It's the configured update time, OR
+        # 3. We're in retry mode
+        if (self.last_fetch_date != today or 
+            self._is_update_time() or 
+            self._should_retry()):
+            should_fetch_new_data = True
+        
+        if not should_fetch_new_data:
+            _LOGGER.debug("Using existing data with recalculated current price")
             return existing_data
         
         try:

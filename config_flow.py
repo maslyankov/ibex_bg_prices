@@ -89,28 +89,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         {
                             vol.Required(
                                 CONF_NAME,
-                                default=DEFAULT_NAME,
-                                description="Friendly name for this IBEX BG integration instance"
+                                default=DEFAULT_NAME
                             ): str,
                             vol.Required(
                                 CONF_UPDATE_TIME,
-                                default=DEFAULT_UPDATE_TIME,
-                                description="Time to fetch prices (24-hour format, e.g., 14:00 for 2 PM)"
+                                default=DEFAULT_UPDATE_TIME
                             ): str,
                             vol.Required(
                                 CONF_UPDATE_DAYS,
-                                default="monday,tuesday,wednesday,thursday,friday,saturday,sunday",
-                                description="Days to fetch prices (comma-separated: monday,tuesday,wednesday,thursday,friday,saturday,sunday)"
+                                default="monday,tuesday,wednesday,thursday,friday,saturday,sunday"
                             ): str,
                             vol.Required(
                                 CONF_RETRY_ATTEMPTS,
-                                default=DEFAULT_RETRY_ATTEMPTS,
-                                description="Number of retry attempts if no data is received"
+                                default=DEFAULT_RETRY_ATTEMPTS
                             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                             vol.Required(
                                 CONF_RETRY_INTERVAL,
-                                default=DEFAULT_RETRY_INTERVAL,
-                                description="Minutes to wait between retry attempts"
+                                default=DEFAULT_RETRY_INTERVAL
                             ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                         }
                     ),
@@ -166,28 +161,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         CONF_NAME,
-                        default=user_input.get(CONF_NAME, DEFAULT_NAME),
-                        description="Friendly name for this IBEX BG integration instance"
+                        default=user_input.get(CONF_NAME, DEFAULT_NAME)
                     ): str,
                     vol.Required(
                         CONF_UPDATE_TIME,
-                        default=user_input.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME),
-                        description="Time to fetch prices (24-hour format, e.g., 14:00 for 2 PM)"
+                        default=user_input.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
                     ): str,
                     vol.Required(
                         CONF_UPDATE_DAYS,
-                        default=user_input.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday"),
-                        description="Days to fetch prices (comma-separated: monday,tuesday,wednesday,thursday,friday,saturday,sunday)"
+                        default=user_input.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
                     ): str,
                     vol.Required(
                         CONF_RETRY_ATTEMPTS,
-                        default=user_input.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS),
-                        description="Number of retry attempts if no data is received"
+                        default=user_input.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                     vol.Required(
                         CONF_RETRY_INTERVAL,
-                        default=user_input.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL),
-                        description="Minutes to wait between retry attempts"
+                        default=user_input.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                 }
             ),
@@ -225,28 +215,23 @@ class OptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         CONF_NAME,
-                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME),
-                        description="Friendly name for this IBEX BG integration instance"
+                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME)
                     ): str,
                     vol.Required(
                         CONF_UPDATE_TIME,
-                        default=self.config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME),
-                        description="Time to fetch prices (24-hour format, e.g., 14:00 for 2 PM)"
+                        default=self.config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
                     ): str,
                     vol.Required(
                         CONF_UPDATE_DAYS,
-                        default=self.config_entry.data.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday"),
-                        description="Days to fetch prices (comma-separated: monday,tuesday,wednesday,thursday,friday,saturday,sunday)"
+                        default=self.config_entry.data.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
                     ): str,
                     vol.Required(
                         CONF_RETRY_ATTEMPTS,
-                        default=self.config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS),
-                        description="Number of retry attempts if no data is received"
+                        default=self.config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                     vol.Required(
                         CONF_RETRY_INTERVAL,
-                        default=self.config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL),
-                        description="Minutes to wait between retry attempts"
+                        default=self.config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                 }
             ),
