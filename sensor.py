@@ -209,9 +209,17 @@ class IbexBGSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         # Use config entry ID to make device and entity IDs unique per instance
         config_entry = coordinator.config_entry
+        
+        # Get instance name with fallback
+        try:
+            instance_name = config_entry.data.get(CONF_NAME, DEFAULT_NAME)
+        except NameError:
+            # Fallback if CONF_NAME is not available
+            instance_name = config_entry.data.get("name", DEFAULT_NAME)
+        
         self._attr_device_info = {
             "identifiers": {(DOMAIN, config_entry.entry_id)},
-            "name": config_entry.data.get(CONF_NAME, DEFAULT_NAME),
+            "name": instance_name,
             "manufacturer": "IBEX",
             "model": "Day Ahead Market",
         }
