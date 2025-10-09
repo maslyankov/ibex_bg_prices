@@ -205,9 +205,11 @@ class IbexBGSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        # Use config entry ID to make device and entity IDs unique per instance
+        config_entry = coordinator.config_entry
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, "ibex_bg")},
-            "name": "IBEX BG",
+            "identifiers": {(DOMAIN, config_entry.entry_id)},
+            "name": config_entry.data.get(CONF_NAME, DEFAULT_NAME),
             "manufacturer": "IBEX",
             "model": "Day Ahead Market",
         }
@@ -217,9 +219,13 @@ class IbexAveragePriceSensor(IbexBGSensor):
     """Sensor for average IBEX price."""
 
     _attr_name = "Average Day-Ahead Electricity Price Today"
-    _attr_unique_id = "ibex_average_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:chart-line"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_average_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -238,9 +244,13 @@ class IbexHighestPriceSensor(IbexBGSensor):
     """Sensor for highest IBEX price."""
 
     _attr_name = "Highest Day-Ahead Electricity Price Today"
-    _attr_unique_id = "ibex_highest_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:arrow-up"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_highest_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -252,9 +262,13 @@ class IbexLowestPriceSensor(IbexBGSensor):
     """Sensor for lowest IBEX price."""
 
     _attr_name = "Lowest Day-Ahead Electricity Price Today"
-    _attr_unique_id = "ibex_lowest_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:arrow-down"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_lowest_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -266,9 +280,13 @@ class IbexCurrentPriceSensor(IbexBGSensor):
     """Sensor for current IBEX price."""
 
     _attr_name = "Current Day-Ahead Electricity Price"
-    _attr_unique_id = "ibex_current_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:currency-usd"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_current_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -280,9 +298,13 @@ class IbexCurrentPercentageSensor(IbexBGSensor):
     """Sensor for current price percentage."""
 
     _attr_name = "Current Percentage Relative To Highest Electricity Price Of The Day"
-    _attr_unique_id = "ibex_current_percentage"
     _attr_native_unit_of_measurement = "%"
     _attr_icon = "mdi:percent"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_current_percentage_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -294,9 +316,13 @@ class IbexNextHourPriceSensor(IbexBGSensor):
     """Sensor for next hour IBEX price."""
 
     _attr_name = "Next Hour Day-Ahead Electricity Price"
-    _attr_unique_id = "ibex_next_hour_price"
     _attr_native_unit_of_measurement = "BGN/MWh"
     _attr_icon = "mdi:clock-forward"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_next_hour_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> float | None:
@@ -308,8 +334,12 @@ class IbexTimeOfHighestPriceSensor(IbexBGSensor):
     """Sensor for time of highest price."""
 
     _attr_name = "Time Of Highest Energy Price Today"
-    _attr_unique_id = "ibex_time_of_highest_price"
     _attr_icon = "mdi:clock-time-four"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_time_of_highest_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> str | None:
@@ -321,8 +351,12 @@ class IbexTimeOfLowestPriceSensor(IbexBGSensor):
     """Sensor for time of lowest price."""
 
     _attr_name = "Time Of Lowest Energy Price Today"
-    _attr_unique_id = "ibex_time_of_lowest_price"
     _attr_icon = "mdi:clock-time-one"
+
+    def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"ibex_time_of_lowest_price_{coordinator.config_entry.entry_id}"
 
     @property
     def native_value(self) -> str | None:
