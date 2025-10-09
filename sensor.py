@@ -78,12 +78,12 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("Invalid time format in configuration, using default")
             self.update_time = datetime.strptime(DEFAULT_UPDATE_TIME, "%H:%M").time()
         
-        # Set a long update interval since we only fetch once per day
+        # Set update interval to ensure current price updates regularly
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(hours=1),  # Check every hour if we should fetch
+            update_interval=timedelta(minutes=15),  # Update every 15 minutes to ensure current price is accurate
         )
 
     def _should_fetch_today(self) -> bool:
@@ -113,28 +113,34 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         """Update data via library."""
         now = datetime.now()
         today = now.date()
-        
-        # Check if we should fetch today
-        if not self._should_fetch_today():
-            _LOGGER.debug("Skipping update - not a configured update day")
-            return self._get_existing_data()
+        _LOGGER.info("Coordinator update triggered at %s", now.strftime("%Y-%m-%d %H:%M:%S"))
         
         # Always recalculate current price with existing data first
         existing_data = self._get_existing_data()
         if existing_data.get("prices"):
-            _LOGGER.debug("Recalculating current price with existing data")
+            _LOGGER.info("Recalculating current price with existing data - prices available: %d records", len(existing_data["prices"]))
             existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
             existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
             existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
+            _LOGGER.info("Recalculated current price: %s", existing_data["current_price"])
+        else:
+            _LOGGER.warning("No existing price data available for recalculation")
+        
+        # Check if we should fetch new data today
+        if not self._should_fetch_today():
+            _LOGGER.debug("Not a configured update day - using existing data with recalculated current price")
+            return existing_data
         
         # Check if we should fetch new data
         should_fetch_new_data = False
         
         # Fetch new data if:
-        # 1. We haven't fetched today yet, OR
-        # 2. It's the configured update time, OR
-        # 3. We're in retry mode
-        if (self.last_fetch_date != today or 
+        # 1. We have no existing data at all, OR
+        # 2. We haven't fetched today yet, OR
+        # 3. It's the configured update time, OR
+        # 4. We're in retry mode
+        if (not existing_data.get("prices") or
+            self.last_fetch_date != today or 
             self._is_update_time() or 
             self._should_retry()):
             should_fetch_new_data = True
@@ -151,8 +157,8 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                 if self._should_retry():
                     self.retry_count += 1
                     _LOGGER.warning(f"No data received, will retry in {self.retry_interval} minutes (attempt {self.retry_count}/{self.retry_attempts})")
-                    # Schedule retry
-                    self.update_interval = timedelta(minutes=self.retry_interval)
+                    # Schedule retry - but don't make it too frequent
+                    self.update_interval = timedelta(minutes=max(self.retry_interval, 15))
                     raise UpdateFailed("No data received, will retry")
                 else:
                     _LOGGER.error("No data received after all retry attempts")
@@ -161,7 +167,7 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             # Success - reset retry count and update last fetch date
             self.retry_count = 0
             self.last_fetch_date = today
-            self.update_interval = timedelta(hours=1)  # Back to hourly checks
+            self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
             
             _LOGGER.info("Successfully fetched IBEX BG prices")
             return {
@@ -183,7 +189,7 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             if self._should_retry():
                 self.retry_count += 1
                 _LOGGER.warning(f"Error fetching data, will retry in {self.retry_interval} minutes: {err}")
-                self.update_interval = timedelta(minutes=self.retry_interval)
+                self.update_interval = timedelta(minutes=max(self.retry_interval, 15))
                 raise UpdateFailed(f"Error communicating with API, will retry: {err}")
             else:
                 _LOGGER.error(f"Error communicating with API after all retries: {err}")
