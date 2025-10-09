@@ -6,10 +6,10 @@
         "description": "Set up your IBEX BG price monitoring integration. This integration fetches day-ahead electricity prices from the Bulgarian Independent Bulgarian Energy Exchange (IBEX).\n\nConfigure when to fetch data and retry settings for reliable price monitoring.",
         "data": {
           "name": "Instance Name",
-          "update_time": "Update Time",
-          "update_days": "Update Days",
-          "retry_attempts": "Retry Attempts",
-          "retry_interval": "Retry Interval"
+          "update_time": "Update Time (HH:MM)",
+          "update_days": "Update Days (comma-separated)",
+          "retry_attempts": "Retry Attempts (1-10)",
+          "retry_interval": "Retry Interval (minutes)"
         }
       }
     },
@@ -34,10 +34,10 @@
         "description": "Modify your IBEX BG integration settings. Changes will take effect after saving.",
         "data": {
           "name": "Instance Name",
-          "update_time": "Update Time",
-          "update_days": "Update Days",
-          "retry_attempts": "Retry Attempts",
-          "retry_interval": "Retry Interval"
+          "update_time": "Update Time (HH:MM)",
+          "update_days": "Update Days (comma-separated)",
+          "retry_attempts": "Retry Attempts (1-10)",
+          "retry_interval": "Retry Interval (minutes)"
         }
       }
     }
