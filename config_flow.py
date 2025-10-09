@@ -7,16 +7,18 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     AVAILABLE_DAYS,
+    CONF_NAME,
     CONF_UPDATE_DAYS,
     CONF_UPDATE_TIME,
     CONF_RETRY_ATTEMPTS,
     CONF_RETRY_INTERVAL,
+    DEFAULT_NAME,
     DEFAULT_UPDATE_DAYS,
     DEFAULT_UPDATE_TIME,
     DEFAULT_RETRY_ATTEMPTS,
@@ -50,9 +52,22 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         _LOGGER.error("Validation error: %s", err)
         raise CannotConnect(f"Failed to connect to IBEX API: {err}") from err
 
-    # Generate a unique title for multiple instances
-    instance_count = len([entry for entry in hass.config_entries.async_entries(DOMAIN)])
-    title = f"IBEX BG" if instance_count == 0 else f"IBEX BG {instance_count + 1}"
+    # Use the configured name or generate a unique title for multiple instances
+    instance_name = data.get(CONF_NAME, DEFAULT_NAME).strip()
+    
+    if not instance_name:
+        instance_name = DEFAULT_NAME
+    
+    # Check if this name is already used
+    existing_entries = hass.config_entries.async_entries(DOMAIN)
+    title = instance_name
+    
+    # If the name is already used, append a number
+    if any(entry.title == title for entry in existing_entries):
+        number = 2
+        while any(entry.title == f"{title} {number}" for entry in existing_entries):
+            number += 1
+        title = f"{title} {number}"
     
     return {"title": title}
 
@@ -72,6 +87,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     step_id="user",
                     data_schema=vol.Schema(
                         {
+                            vol.Required(
+                                CONF_NAME,
+                                default=DEFAULT_NAME
+                            ): str,
                             vol.Required(
                                 CONF_UPDATE_TIME,
                                 default=DEFAULT_UPDATE_TIME
@@ -93,6 +112,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         errors = {}
+
+        # Validate instance name
+        instance_name = user_input.get(CONF_NAME, "").strip()
+        if not instance_name:
+            errors["base"] = "name_required"
+        elif len(instance_name) > 50:
+            errors["base"] = "name_too_long"
 
         # Validate time format
         try:
@@ -134,6 +160,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
+                        CONF_NAME,
+                        default=user_input.get(CONF_NAME, DEFAULT_NAME)
+                    ): str,
+                    vol.Required(
                         CONF_UPDATE_TIME,
                         default=user_input.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
                     ): str,
@@ -152,4 +182,57 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_import(self, import_data: dict[str, Any]) -> FlowResult:
+        """Handle import from configuration.yaml."""
+        return await self.async_step_user(import_data)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlow(config_entry)
+
+
+class OptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for IBEX BG."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_NAME,
+                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME)
+                    ): str,
+                    vol.Required(
+                        CONF_UPDATE_TIME,
+                        default=self.config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
+                    ): str,
+                    vol.Required(
+                        CONF_UPDATE_DAYS,
+                        default=self.config_entry.data.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
+                    ): str,
+                    vol.Required(
+                        CONF_RETRY_ATTEMPTS,
+                        default=self.config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+                    vol.Required(
+                        CONF_RETRY_INTERVAL,
+                        default=self.config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
+                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
+                }
+            ),
         )

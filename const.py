@@ -5,12 +5,14 @@ DEFAULT_NAME = "IBEX BG"
 DEFAULT_SCAN_INTERVAL = 300  # 5 minutes
 
 # Configuration options
+CONF_NAME = "name"
 CONF_UPDATE_TIME = "update_time"
 CONF_UPDATE_DAYS = "update_days"
 CONF_RETRY_ATTEMPTS = "retry_attempts"
 CONF_RETRY_INTERVAL = "retry_interval"
 
 # Default configuration values
+DEFAULT_NAME = "IBEX BG"
 DEFAULT_UPDATE_TIME = "14:00"  # 2 PM - typical time for day-ahead prices
 DEFAULT_UPDATE_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 DEFAULT_RETRY_ATTEMPTS = 3  # Number of retry attempts if no new data
