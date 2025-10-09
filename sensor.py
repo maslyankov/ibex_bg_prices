@@ -128,13 +128,28 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         if (self.last_fetch_date == today and 
             not self._is_update_time() and 
             not self._should_retry()):
-            _LOGGER.debug("Skipping update - already fetched today and not retry time")
-            return self._get_existing_data()
+            _LOGGER.debug("Skipping data fetch - already fetched today and not retry time")
+            # Even if we don't fetch new data, we should recalculate current price
+            # in case the time period has changed
+            existing_data = self._get_existing_data()
+            if existing_data.get("prices"):
+                _LOGGER.debug("Recalculating current price with existing data")
+                existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
+                existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
+                existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
+            return existing_data
         
         # Check if it's update time or retry time
         if not self._is_update_time() and not self._should_retry():
-            _LOGGER.debug("Skipping update - not update time and not retry time")
-            return self._get_existing_data()
+            _LOGGER.debug("Skipping data fetch - not update time and not retry time")
+            # Even if we don't fetch new data, we should recalculate current price
+            existing_data = self._get_existing_data()
+            if existing_data.get("prices"):
+                _LOGGER.debug("Recalculating current price with existing data")
+                existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
+                existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
+                existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
+            return existing_data
         
         try:
             _LOGGER.info(f"Fetching IBEX BG prices (attempt {self.retry_count + 1}/{self.retry_attempts})")

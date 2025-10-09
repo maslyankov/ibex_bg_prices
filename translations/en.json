@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure IBEX BG Integration",
+        "description": "Set up your IBEX BG price monitoring integration. This integration fetches day-ahead electricity prices from the Bulgarian Independent Bulgarian Energy Exchange (IBEX).\n\nConfigure when to fetch data and retry settings for reliable price monitoring.",
+        "data": {
+          "name": "Instance Name",
+          "update_time": "Update Time (HH:MM)",
+          "update_days": "Update Days (comma-separated)",
+          "retry_attempts": "Retry Attempts (1-10)",
+          "retry_interval": "Retry Interval (minutes)"
+        }
+      }
+    },
+    "error": {
+      "name_required": "Instance name is required",
+      "name_too_long": "Instance name must be 50 characters or less",
+      "invalid_time_format": "Invalid time format. Use HH:MM (e.g., 14:00 for 2 PM)",
+      "no_days_selected": "At least one day must be selected",
+      "invalid_days_selected": "Invalid day(s) selected. Use: monday, tuesday, wednesday, thursday, friday, saturday, sunday",
+      "cannot_connect": "Unable to connect to IBEX API. Please check your internet connection and try again.",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unknown error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "Integration is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update IBEX BG Configuration",
+        "description": "Modify your IBEX BG integration settings. Changes will take effect after saving.",
+        "data": {
+          "name": "Instance Name",
+          "update_time": "Update Time (HH:MM)",
+          "update_days": "Update Days (comma-separated)",
+          "retry_attempts": "Retry Attempts (1-10)",
+          "retry_interval": "Retry Interval (minutes)"
+        }
+      }
+    }
+  }
+}
