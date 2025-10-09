@@ -53,7 +53,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise CannotConnect(f"Failed to connect to IBEX API: {err}") from err
 
     # Use the configured name or generate a unique title for multiple instances
-    instance_name = data.get(CONF_NAME, DEFAULT_NAME).strip()
+    instance_name = data.get("name", DEFAULT_NAME).strip()
     
     if not instance_name:
         instance_name = DEFAULT_NAME
@@ -88,23 +88,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=vol.Schema(
                         {
                             vol.Required(
-                                CONF_NAME,
+                                "name",
                                 default=DEFAULT_NAME
                             ): str,
                             vol.Required(
-                                CONF_UPDATE_TIME,
+                                "update_time",
                                 default=DEFAULT_UPDATE_TIME
                             ): str,
                             vol.Required(
-                                CONF_UPDATE_DAYS,
+                                "update_days",
                                 default="monday,tuesday,wednesday,thursday,friday,saturday,sunday"
                             ): str,
                             vol.Required(
-                                CONF_RETRY_ATTEMPTS,
+                                "retry_attempts",
                                 default=DEFAULT_RETRY_ATTEMPTS
                             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                             vol.Required(
-                                CONF_RETRY_INTERVAL,
+                                "retry_interval",
                                 default=DEFAULT_RETRY_INTERVAL
                             ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                         }
@@ -114,7 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         # Validate instance name
-        instance_name = user_input.get(CONF_NAME, "").strip()
+        instance_name = user_input.get("name", "").strip()
         if not instance_name:
             errors["base"] = "name_required"
         elif len(instance_name) > 50:
@@ -123,12 +123,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Validate time format
         try:
             from datetime import datetime
-            datetime.strptime(user_input[CONF_UPDATE_TIME], "%H:%M")
+            datetime.strptime(user_input["update_time"], "%H:%M")
         except ValueError:
             errors["base"] = "invalid_time_format"
 
         # Validate days selection
-        days_str = user_input.get(CONF_UPDATE_DAYS, "")
+        days_str = user_input.get("update_days", "")
         if not days_str:
             errors["base"] = "no_days_selected"
         else:
@@ -140,7 +140,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_days_selected"
             else:
                 # Convert back to list for storage
-                user_input[CONF_UPDATE_DAYS] = days
+                user_input["update_days"] = days
 
         if not errors:
             try:
@@ -160,24 +160,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_NAME,
-                        default=user_input.get(CONF_NAME, DEFAULT_NAME)
+                        "name",
+                        default=user_input.get("name", DEFAULT_NAME)
                     ): str,
                     vol.Required(
-                        CONF_UPDATE_TIME,
-                        default=user_input.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
+                        "update_time",
+                        default=user_input.get("update_time", DEFAULT_UPDATE_TIME)
                     ): str,
                     vol.Required(
-                        CONF_UPDATE_DAYS,
-                        default=user_input.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
+                        "update_days",
+                        default=user_input.get("update_days", "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
                     ): str,
                     vol.Required(
-                        CONF_RETRY_ATTEMPTS,
-                        default=user_input.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+                        "retry_attempts",
+                        default=user_input.get("retry_attempts", DEFAULT_RETRY_ATTEMPTS)
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                     vol.Required(
-                        CONF_RETRY_INTERVAL,
-                        default=user_input.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
+                        "retry_interval",
+                        default=user_input.get("retry_interval", DEFAULT_RETRY_INTERVAL)
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                 }
             ),
@@ -214,24 +214,24 @@ class OptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_NAME,
-                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME)
+                        "name",
+                        default=self.config_entry.data.get("name", DEFAULT_NAME)
                     ): str,
                     vol.Required(
-                        CONF_UPDATE_TIME,
-                        default=self.config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
+                        "update_time",
+                        default=self.config_entry.data.get("update_time", DEFAULT_UPDATE_TIME)
                     ): str,
                     vol.Required(
-                        CONF_UPDATE_DAYS,
-                        default=self.config_entry.data.get(CONF_UPDATE_DAYS, "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
+                        "update_days",
+                        default=self.config_entry.data.get("update_days", "monday,tuesday,wednesday,thursday,friday,saturday,sunday")
                     ): str,
                     vol.Required(
-                        CONF_RETRY_ATTEMPTS,
-                        default=self.config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
+                        "retry_attempts",
+                        default=self.config_entry.data.get("retry_attempts", DEFAULT_RETRY_ATTEMPTS)
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                     vol.Required(
-                        CONF_RETRY_INTERVAL,
-                        default=self.config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
+                        "retry_interval",
+                        default=self.config_entry.data.get("retry_interval", DEFAULT_RETRY_INTERVAL)
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=120)),
                 }
             ),

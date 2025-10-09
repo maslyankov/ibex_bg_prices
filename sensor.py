@@ -17,11 +17,6 @@ from homeassistant.helpers.update_coordinator import (
 
 from .api import IbexBGAPI
 from .const import (
-    CONF_NAME,
-    CONF_UPDATE_DAYS,
-    CONF_UPDATE_TIME,
-    CONF_RETRY_ATTEMPTS,
-    CONF_RETRY_INTERVAL,
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_UPDATE_DAYS,
@@ -72,9 +67,9 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         self.retry_count = 0
         
         # Get configuration
-        update_time_str = config_entry.data.get(CONF_UPDATE_TIME, DEFAULT_UPDATE_TIME)
-        self.retry_attempts = config_entry.data.get(CONF_RETRY_ATTEMPTS, DEFAULT_RETRY_ATTEMPTS)
-        self.retry_interval = config_entry.data.get(CONF_RETRY_INTERVAL, DEFAULT_RETRY_INTERVAL)
+        update_time_str = config_entry.data.get("update_time", DEFAULT_UPDATE_TIME)
+        self.retry_attempts = config_entry.data.get("retry_attempts", DEFAULT_RETRY_ATTEMPTS)
+        self.retry_interval = config_entry.data.get("retry_interval", DEFAULT_RETRY_INTERVAL)
         
         # Parse update time
         try:
@@ -95,7 +90,7 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         """Check if we should fetch data today based on configuration."""
         now = datetime.now()
         current_day = now.strftime("%A").lower()
-        update_days = self.config_entry.data.get(CONF_UPDATE_DAYS, DEFAULT_UPDATE_DAYS)
+        update_days = self.config_entry.data.get("update_days", DEFAULT_UPDATE_DAYS)
         
         # Check if current day is in update days
         return current_day in update_days
@@ -222,12 +217,8 @@ class IbexBGSensor(CoordinatorEntity, SensorEntity):
         # Use config entry ID to make device and entity IDs unique per instance
         config_entry = coordinator.config_entry
         
-        # Get instance name with fallback
-        try:
-            instance_name = config_entry.data.get(CONF_NAME, DEFAULT_NAME)
-        except NameError:
-            # Fallback if CONF_NAME is not available
-            instance_name = config_entry.data.get("name", DEFAULT_NAME)
+        # Get instance name
+        instance_name = config_entry.data.get("name", DEFAULT_NAME)
         
         self._attr_device_info = {
             "identifiers": {(DOMAIN, config_entry.entry_id)},
