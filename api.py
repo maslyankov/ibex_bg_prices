@@ -62,27 +62,55 @@ class IbexBGAPI:
             return None
 
     def get_current_price(self, data: list[dict[str, Any]]) -> float | None:
-        """Get the price for the current hour."""
+        """Get the price for the current time period."""
         if not data:
             return None
         
         from datetime import datetime
         now = datetime.now()
-        current_hour = now.replace(minute=0, second=0, microsecond=0)
         
-        # Find the price for the current hour
-        for record in data:
+        # Sort data by time to find the correct price
+        # Handle both 'date' and 'time' field names
+        def get_date_key(record):
+            return record.get("date", record.get("time", ""))
+        
+        sorted_data = sorted(data, key=get_date_key)
+        
+        # Find the price for the current time
+        current_price = None
+        for record in sorted_data:
             try:
-                # Parse the date from the record
-                record_date = datetime.fromisoformat(record.get("date", "").replace("Z", "+00:00"))
-                if record_date.hour == current_hour.hour and record_date.date() == current_hour.date():
-                    return record.get("price")
+                # Parse the date from the record (handle both 'date' and 'time' fields)
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                # Handle different date formats
+                if "T" in date_str:
+                    # ISO format with T
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    # Simple format like '2025-10-10 00:00:00'
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # Check if this record is for today
+                if record_date.date() == now.date():
+                    # If current time is before this record's time, use the previous price
+                    if now < record_date:
+                        break
+                    
+                    # If current time is at or after this record's time, use this price
+                    current_price = record.get("price")
+                    
             except (ValueError, TypeError):
                 continue
         
-        # If no exact match, return the most recent price
-        sorted_data = sorted(data, key=lambda x: x.get("date", ""), reverse=True)
-        return sorted_data[0].get("price") if sorted_data else None
+        # If we found a price for today, return it
+        if current_price is not None:
+            return current_price
+        
+        # If no price found for today, return the most recent price overall
+        return sorted_data[-1].get("price") if sorted_data else None
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
         """Calculate average price from the data."""
