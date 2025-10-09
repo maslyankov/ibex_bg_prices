@@ -17,10 +17,12 @@ from homeassistant.helpers.update_coordinator import (
 
 from .api import IbexBGAPI
 from .const import (
+    CONF_NAME,
     CONF_UPDATE_DAYS,
     CONF_UPDATE_TIME,
     CONF_RETRY_ATTEMPTS,
     CONF_RETRY_INTERVAL,
+    DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_UPDATE_DAYS,
     DEFAULT_UPDATE_TIME,
