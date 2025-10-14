@@ -68,6 +68,7 @@ class IbexBGAPI:
         
         from datetime import datetime
         now = datetime.now()
+        today = now.date()
         
         # Sort data by time to find the correct price
         # Handle both 'date' and 'time' field names
@@ -76,8 +77,10 @@ class IbexBGAPI:
         
         sorted_data = sorted(data, key=get_date_key)
         
-        # Find the price for the current time
+        # First, try to find a price for today
         current_price = None
+        last_today_price = None
+        
         for record in sorted_data:
             try:
                 # Parse the date from the record (handle both 'date' and 'time' fields)
@@ -94,7 +97,9 @@ class IbexBGAPI:
                     record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                 
                 # Check if this record is for today
-                if record_date.date() == now.date():
+                if record_date.date() == today:
+                    last_today_price = record.get("price")
+                    
                     # If current time is before this record's time, use the previous price
                     if now < record_date:
                         break
@@ -109,27 +114,29 @@ class IbexBGAPI:
         if current_price is not None:
             return current_price
         
-        # If no price found for today, look for the most recent price that's not in the future
-        # This handles the case where we have next day's prices but it's still the current day
-        for record in reversed(sorted_data):
-            try:
-                date_str = record.get("date", record.get("time", ""))
-                if not date_str:
-                    continue
-                
-                if "T" in date_str:
-                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                else:
-                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-                
-                # Use the most recent price that's not in the future
-                if record_date <= now:
-                    return record.get("price")
+        # If we're past today's last price, look for tomorrow's first price
+        if last_today_price is not None:
+            # We have today's data but we're past the last price
+            # Look for tomorrow's first price
+            for record in sorted_data:
+                try:
+                    date_str = record.get("date", record.get("time", ""))
+                    if not date_str:
+                        continue
                     
-            except (ValueError, TypeError):
-                continue
+                    if "T" in date_str:
+                        record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    else:
+                        record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                    
+                    # If this is tomorrow's data, use the first price
+                    if record_date.date() > today:
+                        return record.get("price")
+                        
+                except (ValueError, TypeError):
+                    continue
         
-        # Fallback: return the most recent price overall
+        # If no price found for today or tomorrow, return the most recent price overall
         return sorted_data[-1].get("price") if sorted_data else None
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
