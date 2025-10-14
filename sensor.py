@@ -109,6 +109,36 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         """Check if we should retry fetching data."""
         return self.retry_count < self.retry_attempts
 
+    def _should_keep_current_day_data(self, new_data: list[dict]) -> bool:
+        """Check if we should keep the current day's data instead of replacing with new data."""
+        if not new_data:
+            return True
+        
+        from datetime import datetime
+        now = datetime.now()
+        
+        # Get the date of the first record in new data
+        try:
+            first_record = new_data[0]
+            date_str = first_record.get("date", first_record.get("time", ""))
+            if not date_str:
+                return True
+            
+            if "T" in date_str:
+                new_data_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                new_data_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            
+            # If new data is for tomorrow and it's still today, keep current day's data
+            if new_data_date.date() > now.date():
+                _LOGGER.info("New data is for tomorrow (%s), keeping current day's data until day ends", new_data_date.date())
+                return True
+            
+            return False
+        except (ValueError, TypeError, KeyError):
+            _LOGGER.warning("Could not parse date from new data, keeping current data")
+            return True
+
     async def _async_update_data(self) -> dict:
         """Update data via library."""
         now = datetime.now()
@@ -164,12 +194,21 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("No data received after all retry attempts")
                     raise UpdateFailed("Failed to fetch IBEX BG prices after all retries")
             
+            # Check if we should keep current day's data instead of replacing with new data
+            if self._should_keep_current_day_data(data):
+                _LOGGER.info("Keeping current day's data, new data is for tomorrow")
+                # Still update the last fetch date to avoid repeated fetches
+                self.retry_count = 0
+                self.last_fetch_date = today
+                self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
+                return existing_data
+            
             # Success - reset retry count and update last fetch date
             self.retry_count = 0
             self.last_fetch_date = today
             self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
             
-            _LOGGER.info("Successfully fetched IBEX BG prices")
+            _LOGGER.info("Successfully fetched IBEX BG prices - using new data")
             return {
                 "prices": data,
                 "current_price": self.api.get_current_price(data),

@@ -78,9 +78,6 @@ class IbexBGAPI:
         
         # Find the price for the current time
         current_price = None
-        most_recent_price = None
-        has_today_data = False
-        
         for record in sorted_data:
             try:
                 # Parse the date from the record (handle both 'date' and 'time' fields)
@@ -96,12 +93,8 @@ class IbexBGAPI:
                     # Simple format like '2025-10-10 00:00:00'
                     record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                 
-                # Keep track of the most recent price overall
-                most_recent_price = record.get("price")
-                
                 # Check if this record is for today
                 if record_date.date() == now.date():
-                    has_today_data = True
                     # If current time is before this record's time, use the previous price
                     if now < record_date:
                         break
@@ -112,17 +105,32 @@ class IbexBGAPI:
             except (ValueError, TypeError):
                 continue
         
-        # If we have data for today and found a current price, return it
-        if has_today_data and current_price is not None:
+        # If we found a price for today, return it
+        if current_price is not None:
             return current_price
         
-        # If we don't have today's data yet, return None
-        # This indicates that no current price is available for the current time
-        if not has_today_data:
-            return None
+        # If no price found for today, look for the most recent price that's not in the future
+        # This handles the case where we have next day's prices but it's still the current day
+        for record in reversed(sorted_data):
+            try:
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # Use the most recent price that's not in the future
+                if record_date <= now:
+                    return record.get("price")
+                    
+            except (ValueError, TypeError):
+                continue
         
-        # If we have today's data but no current price found, return the most recent price
-        return most_recent_price
+        # Fallback: return the most recent price overall
+        return sorted_data[-1].get("price") if sorted_data else None
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
         """Calculate average price from the data."""
