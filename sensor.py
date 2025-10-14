@@ -109,35 +109,114 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         """Check if we should retry fetching data."""
         return self.retry_count < self.retry_attempts
 
-    def _should_keep_current_day_data(self, new_data: list[dict]) -> bool:
-        """Check if we should keep the current day's data instead of replacing with new data."""
-        if not new_data:
-            return True
-        
+    def _merge_price_data(self, current_data: list[dict], new_data: list[dict]) -> list[dict]:
+        """Merge new price data with current data, keeping current day's data until day ends."""
         from datetime import datetime
         now = datetime.now()
+        today = now.date()
+        
+        # If no current data, return new data
+        if not current_data:
+            return new_data
+        
+        # If no new data, return current data
+        if not new_data:
+            return current_data
         
         # Get the date of the first record in new data
         try:
-            first_record = new_data[0]
-            date_str = first_record.get("date", first_record.get("time", ""))
+            first_new_record = new_data[0]
+            date_str = first_new_record.get("date", first_new_record.get("time", ""))
             if not date_str:
-                return True
+                return current_data
             
             if "T" in date_str:
                 new_data_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
             else:
                 new_data_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
             
-            # If new data is for tomorrow and it's still today, keep current day's data
-            if new_data_date.date() > now.date():
-                _LOGGER.info("New data is for tomorrow (%s), keeping current day's data until day ends", new_data_date.date())
-                return True
+            # If new data is for tomorrow and it's still today, merge the data
+            if new_data_date.date() > today:
+                _LOGGER.info("New data is for tomorrow (%s), merging with current day's data", new_data_date.date())
+                
+                # Keep current day's data and add tomorrow's data
+                merged_data = []
+                
+                # Add current day's data
+                for record in current_data:
+                    try:
+                        record_date_str = record.get("date", record.get("time", ""))
+                        if "T" in record_date_str:
+                            record_date = datetime.fromisoformat(record_date_str.replace("Z", "+00:00"))
+                        else:
+                            record_date = datetime.strptime(record_date_str, "%Y-%m-%d %H:%M:%S")
+                        
+                        if record_date.date() == today:
+                            merged_data.append(record)
+                    except (ValueError, TypeError):
+                        continue
+                
+                # Add tomorrow's data
+                merged_data.extend(new_data)
+                
+                _LOGGER.info("Merged data: %d current day records + %d tomorrow records = %d total", 
+                           len([r for r in current_data if self._is_today_record(r)]), 
+                           len(new_data), 
+                           len(merged_data))
+                
+                return merged_data
             
-            return False
+            # If new data is for today or past, replace current data
+            return new_data
+            
         except (ValueError, TypeError, KeyError):
             _LOGGER.warning("Could not parse date from new data, keeping current data")
-            return True
+            return current_data
+
+    def _is_today_record(self, record: dict) -> bool:
+        """Check if a record is for today."""
+        from datetime import datetime
+        try:
+            date_str = record.get("date", record.get("time", ""))
+            if not date_str:
+                return False
+            
+            if "T" in date_str:
+                record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            
+            return record_date.date() == datetime.now().date()
+        except (ValueError, TypeError):
+            return False
+
+    def _cleanup_old_data(self, prices: list[dict]) -> list[dict]:
+        """Clean up old data to prevent stacking. Keep only today's and tomorrow's data."""
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        today = now.date()
+        tomorrow = today + timedelta(days=1)
+        
+        cleaned_prices = []
+        for record in prices:
+            try:
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # Keep only today's and tomorrow's data
+                if record_date.date() in [today, tomorrow]:
+                    cleaned_prices.append(record)
+                    
+            except (ValueError, TypeError):
+                continue
+        
+        return cleaned_prices
 
     async def _async_update_data(self) -> dict:
         """Update data via library."""
@@ -148,6 +227,12 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         # Always recalculate current price with existing data first
         existing_data = self._get_existing_data()
         if existing_data.get("prices"):
+            # Clean up old data at midnight to prevent stacking
+            cleaned_prices = self._cleanup_old_data(existing_data["prices"])
+            if len(cleaned_prices) != len(existing_data["prices"]):
+                _LOGGER.info("Cleaned up old data: %d -> %d records", len(existing_data["prices"]), len(cleaned_prices))
+                existing_data["prices"] = cleaned_prices
+            
             _LOGGER.info("Recalculating current price with existing data - prices available: %d records", len(existing_data["prices"]))
             existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
             existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
@@ -194,33 +279,28 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.error("No data received after all retry attempts")
                     raise UpdateFailed("Failed to fetch IBEX BG prices after all retries")
             
-            # Check if we should keep current day's data instead of replacing with new data
-            if self._should_keep_current_day_data(data):
-                _LOGGER.info("Keeping current day's data, new data is for tomorrow")
-                # Still update the last fetch date to avoid repeated fetches
-                self.retry_count = 0
-                self.last_fetch_date = today
-                self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
-                return existing_data
+            # Merge new data with existing data (keep current day until it ends)
+            current_prices = existing_data.get("prices", [])
+            merged_prices = self._merge_price_data(current_prices, data)
             
             # Success - reset retry count and update last fetch date
             self.retry_count = 0
             self.last_fetch_date = today
             self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
             
-            _LOGGER.info("Successfully fetched IBEX BG prices - using new data")
+            _LOGGER.info("Successfully fetched IBEX BG prices - merged data: %d records", len(merged_prices))
             return {
-                "prices": data,
-                "current_price": self.api.get_current_price(data),
-                "average_price": self.api.get_average_price(data),
-                "min_price": self.api.get_min_price(data),
-                "max_price": self.api.get_max_price(data),
-                "total_volume": self.api.get_total_volume(data),
-                "next_hour_price": self.api.get_next_hour_price(data),
-                "current_percentage": self.api.get_current_percentage(data),
-                "time_of_highest_price": self.api.get_time_of_highest_price(data),
-                "time_of_lowest_price": self.api.get_time_of_lowest_price(data),
-                "prices_attributes": self.api.get_prices_attributes(data),
+                "prices": merged_prices,
+                "current_price": self.api.get_current_price(merged_prices),
+                "average_price": self.api.get_average_price(merged_prices),
+                "min_price": self.api.get_min_price(merged_prices),
+                "max_price": self.api.get_max_price(merged_prices),
+                "total_volume": self.api.get_total_volume(merged_prices),
+                "next_hour_price": self.api.get_next_hour_price(merged_prices),
+                "current_percentage": self.api.get_current_percentage(merged_prices),
+                "time_of_highest_price": self.api.get_time_of_highest_price(merged_prices),
+                "time_of_lowest_price": self.api.get_time_of_lowest_price(merged_prices),
+                "prices_attributes": self.api.get_prices_attributes(merged_prices),
             }
         except UpdateFailed:
             raise
