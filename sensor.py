@@ -224,7 +224,7 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         today = now.date()
         _LOGGER.info("Coordinator update triggered at %s", now.strftime("%Y-%m-%d %H:%M:%S"))
         
-        # Always recalculate current price with existing data first
+        # Get existing data
         existing_data = self._get_existing_data()
         if existing_data.get("prices"):
             # Clean up old data at midnight to prevent stacking
@@ -232,14 +232,6 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             if len(cleaned_prices) != len(existing_data["prices"]):
                 _LOGGER.info("Cleaned up old data: %d -> %d records", len(existing_data["prices"]), len(cleaned_prices))
                 existing_data["prices"] = cleaned_prices
-            
-            _LOGGER.info("Recalculating current price with existing data - prices available: %d records", len(existing_data["prices"]))
-            existing_data["current_price"] = self.api.get_current_price(existing_data["prices"])
-            existing_data["current_percentage"] = self.api.get_current_percentage(existing_data["prices"])
-            existing_data["next_hour_price"] = self.api.get_next_hour_price(existing_data["prices"])
-            _LOGGER.info("Recalculated current price: %s", existing_data["current_price"])
-        else:
-            _LOGGER.warning("No existing price data available for recalculation")
         
         # Check if we should fetch new data today
         if not self._should_fetch_today():
@@ -261,7 +253,7 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             should_fetch_new_data = True
         
         if not should_fetch_new_data:
-            _LOGGER.debug("Using existing data with recalculated current price")
+            _LOGGER.debug("Using existing data")
             return existing_data
         
         try:
@@ -291,13 +283,10 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Successfully fetched IBEX BG prices - merged data: %d records", len(merged_prices))
             return {
                 "prices": merged_prices,
-                "current_price": self.api.get_current_price(merged_prices),
                 "average_price": self.api.get_average_price(merged_prices),
                 "min_price": self.api.get_min_price(merged_prices),
                 "max_price": self.api.get_max_price(merged_prices),
                 "total_volume": self.api.get_total_volume(merged_prices),
-                "next_hour_price": self.api.get_next_hour_price(merged_prices),
-                "current_percentage": self.api.get_current_percentage(merged_prices),
                 "time_of_highest_price": self.api.get_time_of_highest_price(merged_prices),
                 "time_of_lowest_price": self.api.get_time_of_lowest_price(merged_prices),
                 "prices_attributes": self.api.get_prices_attributes(merged_prices),
@@ -320,13 +309,10 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             return self.data
         return {
             "prices": [],
-            "current_price": None,
             "average_price": None,
             "min_price": None,
             "max_price": None,
             "total_volume": None,
-            "next_hour_price": None,
-            "current_percentage": None,
             "time_of_highest_price": None,
             "time_of_lowest_price": None,
             "prices_attributes": [],
@@ -415,83 +401,11 @@ class IbexLowestPriceSensor(IbexBGSensor):
 
 
 class IbexCurrentTimeBasedSensor(IbexBGSensor):
-    """Base class for current time-based sensors that update at 15-minute intervals."""
+    """Base class for current time-based sensors that read from prices list."""
 
     def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._update_timer = None
-
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to Home Assistant."""
-        await super().async_added_to_hass()
-        # Schedule the first update
-        self._schedule_next_update()
-
-    async def async_will_remove_from_hass(self) -> None:
-        """When entity is removed from Home Assistant."""
-        if self._update_timer:
-            self._update_timer()
-            self._update_timer = None
-        await super().async_will_remove_from_hass()
-
-    def _schedule_next_update(self) -> None:
-        """Schedule the next update at the next 15-minute interval."""
-        from datetime import datetime, timedelta
-        
-        now = datetime.now()
-        
-        # Calculate the next 15-minute interval
-        # Round up to the next 15-minute mark
-        minutes_since_hour = now.minute
-        next_15_min = ((minutes_since_hour // 15) + 1) * 15
-        
-        if next_15_min >= 60:
-            # Next hour
-            next_update = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        else:
-            # Same hour
-            next_update = now.replace(minute=next_15_min, second=0, microsecond=0)
-        
-        # Calculate delay in seconds
-        delay = (next_update - now).total_seconds()
-        
-        _LOGGER.info("Scheduling current price update in %.1f seconds (at %s)", 
-                    delay, next_update.strftime("%H:%M:%S"))
-        
-        # Cancel existing timer if any
-        if self._update_timer:
-            self._update_timer()
-        
-        # Schedule the update
-        self._update_timer = self.hass.loop.call_later(
-            delay, 
-            self._update_current_values
-        )
-
-    def _update_current_values(self) -> None:
-        """Update the current values and schedule the next update."""
-        _LOGGER.info("Updating current values at scheduled time")
-        
-        # Recalculate current values with existing data
-        if self.coordinator.data and self.coordinator.data.get("prices"):
-            current_price = self.coordinator.api.get_current_price(self.coordinator.data["prices"])
-            current_percentage = self.coordinator.api.get_current_percentage(self.coordinator.data["prices"])
-            next_hour_price = self.coordinator.api.get_next_hour_price(self.coordinator.data["prices"])
-            
-            # Update the coordinator data
-            self.coordinator.data["current_price"] = current_price
-            self.coordinator.data["current_percentage"] = current_percentage
-            self.coordinator.data["next_hour_price"] = next_hour_price
-            
-            _LOGGER.info("Updated current values - price: %s, percentage: %s, next hour: %s", 
-                        current_price, current_percentage, next_hour_price)
-            
-            # Notify all listeners that data has been updated
-            self.coordinator.async_set_updated_data(self.coordinator.data)
-        
-        # Schedule the next update
-        self._schedule_next_update()
 
 
 class IbexCurrentPriceSensor(IbexCurrentTimeBasedSensor):
@@ -508,8 +422,12 @@ class IbexCurrentPriceSensor(IbexCurrentTimeBasedSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current price."""
-        return self.coordinator.data.get("current_price")
+        """Return the current price based on current time from prices list."""
+        if not self.coordinator.data or not self.coordinator.data.get("prices"):
+            return None
+        
+        # Get current price directly from the prices list based on current time
+        return self.coordinator.api.get_current_price(self.coordinator.data["prices"])
 
 
 class IbexCurrentPercentageSensor(IbexCurrentTimeBasedSensor):
@@ -526,8 +444,12 @@ class IbexCurrentPercentageSensor(IbexCurrentTimeBasedSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the current percentage."""
-        return self.coordinator.data.get("current_percentage")
+        """Return the current percentage based on current time from prices list."""
+        if not self.coordinator.data or not self.coordinator.data.get("prices"):
+            return None
+        
+        # Get current percentage directly from the prices list based on current time
+        return self.coordinator.api.get_current_percentage(self.coordinator.data["prices"])
 
 
 class IbexNextHourPriceSensor(IbexCurrentTimeBasedSensor):
@@ -544,8 +466,12 @@ class IbexNextHourPriceSensor(IbexCurrentTimeBasedSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return the next hour price."""
-        return self.coordinator.data.get("next_hour_price")
+        """Return the next hour price based on current time from prices list."""
+        if not self.coordinator.data or not self.coordinator.data.get("prices"):
+            return None
+        
+        # Get next hour price directly from the prices list based on current time
+        return self.coordinator.api.get_next_hour_price(self.coordinator.data["prices"])
 
 
 class IbexTimeOfHighestPriceSensor(IbexBGSensor):
