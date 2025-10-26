@@ -209,13 +209,40 @@ class IbexBGAPI:
         
         from datetime import datetime, timedelta
         now = datetime.now()
+        today = now.date()
         next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        
+        # First, check if we have any prices for today
+        has_today_prices = any(
+            self._is_today_record(record) for record in data
+        )
+        
+        # If we have no prices for today at all, check if we only have tomorrow's prices
+        # In this case, we should not return tomorrow's price as next hour price
+        if not has_today_prices:
+            has_tomorrow_prices = any(
+                self._is_tomorrow_record(record) for record in data
+            )
+            if has_tomorrow_prices:
+                _LOGGER.debug("Only tomorrow's prices available, returning None for next hour price")
+                return None
         
         # Find the price for the next hour
         for record in data:
             try:
-                record_date = datetime.fromisoformat(record.get("date", "").replace("Z", "+00:00"))
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                # Handle different date formats
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # Check if this is the next hour
                 if record_date.hour == next_hour.hour and record_date.date() == next_hour.date():
+                    _LOGGER.debug("Found next hour price: %s", record.get("price"))
                     return record.get("price")
             except (ValueError, TypeError):
                 continue
