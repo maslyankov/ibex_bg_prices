@@ -83,6 +83,7 @@ class IbexBGAPI:
         # First, try to find a price for today
         current_price = None
         last_today_price = None
+        last_today_time = None
         
         for record in sorted_data:
             try:
@@ -102,6 +103,7 @@ class IbexBGAPI:
                 # Check if this record is for today
                 if record_date.date() == today:
                     last_today_price = record.get("price")
+                    last_today_time = record_date
                     _LOGGER.debug("Found today's record: %s -> price: %s", record_date.strftime("%H:%M:%S"), record.get("price"))
                     
                     # If current time is before this record's time, use the previous price
@@ -117,34 +119,51 @@ class IbexBGAPI:
                 _LOGGER.debug("Error parsing date '%s': %s", date_str, e)
                 continue
         
-        # If we found a price for today, return it
-        if current_price is not None:
+        # If we found a price for today, check if we're past the last today's price
+        if current_price is not None and last_today_time is not None:
+            if now > last_today_time:
+                _LOGGER.debug("Past today's last price (%s), looking for tomorrow's first price", last_today_time.strftime("%H:%M:%S"))
+                # We're past today's last price, look for tomorrow's first price
+                for record in sorted_data:
+                    try:
+                        date_str = record.get("date", record.get("time", ""))
+                        if not date_str:
+                            continue
+                        
+                        if "T" in date_str:
+                            record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                        else:
+                            record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                        
+                        # If this is tomorrow's data, use the first price
+                        if record_date.date() > today:
+                            _LOGGER.debug("Found tomorrow's first price: %s", record.get("price"))
+                            return record.get("price")
+                            
+                    except (ValueError, TypeError):
+                        continue
+            else:
+                _LOGGER.debug("Returning today's current price: %s", current_price)
+                return current_price
+        elif current_price is not None:
             _LOGGER.debug("Returning today's current price: %s", current_price)
             return current_price
         
-        # If we're past today's last price, look for tomorrow's first price
-        if last_today_price is not None:
-            _LOGGER.debug("Past today's last price, looking for tomorrow's first price")
-            # We have today's data but we're past the last price
-            # Look for tomorrow's first price
-            for record in sorted_data:
-                try:
-                    date_str = record.get("date", record.get("time", ""))
-                    if not date_str:
-                        continue
-                    
-                    if "T" in date_str:
-                        record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                    else:
-                        record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-                    
-                    # If this is tomorrow's data, use the first price
-                    if record_date.date() > today:
-                        _LOGGER.debug("Found tomorrow's first price: %s", record.get("price"))
-                        return record.get("price")
-                        
-                except (ValueError, TypeError):
-                    continue
+        # If we have no prices for today at all, check if we only have tomorrow's prices
+        # In this case, we should not return tomorrow's price as current price
+        has_today_prices = any(
+            self._is_today_record(record) for record in sorted_data
+        )
+        
+        if not has_today_prices:
+            _LOGGER.debug("No prices available for today, only future prices available")
+            # Check if we have tomorrow's prices
+            has_tomorrow_prices = any(
+                self._is_tomorrow_record(record) for record in sorted_data
+            )
+            if has_tomorrow_prices:
+                _LOGGER.debug("Only tomorrow's prices available, returning None for current price")
+                return None
         
         # If no price found for today or tomorrow, return the most recent price overall
         fallback_price = sorted_data[-1].get("price") if sorted_data else None
@@ -297,3 +316,38 @@ class IbexBGAPI:
         
         # No future price changes found
         return None
+
+    def _is_today_record(self, record: dict) -> bool:
+        """Check if a record is for today."""
+        from datetime import datetime
+        try:
+            date_str = record.get("date", record.get("time", ""))
+            if not date_str:
+                return False
+            
+            if "T" in date_str:
+                record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            
+            return record_date.date() == datetime.now().date()
+        except (ValueError, TypeError):
+            return False
+
+    def _is_tomorrow_record(self, record: dict) -> bool:
+        """Check if a record is for tomorrow."""
+        from datetime import datetime, timedelta
+        try:
+            date_str = record.get("date", record.get("time", ""))
+            if not date_str:
+                return False
+            
+            if "T" in date_str:
+                record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            
+            tomorrow = datetime.now().date() + timedelta(days=1)
+            return record_date.date() == tomorrow
+        except (ValueError, TypeError):
+            return False
