@@ -70,12 +70,15 @@ class IbexBGAPI:
         now = datetime.now()
         today = now.date()
         
+        _LOGGER.debug("get_current_price called at %s (today: %s)", now.strftime("%Y-%m-%d %H:%M:%S"), today)
+        
         # Sort data by time to find the correct price
         # Handle both 'date' and 'time' field names
         def get_date_key(record):
             return record.get("date", record.get("time", ""))
         
         sorted_data = sorted(data, key=get_date_key)
+        _LOGGER.debug("Processing %d price records", len(sorted_data))
         
         # First, try to find a price for today
         current_price = None
@@ -99,23 +102,29 @@ class IbexBGAPI:
                 # Check if this record is for today
                 if record_date.date() == today:
                     last_today_price = record.get("price")
+                    _LOGGER.debug("Found today's record: %s -> price: %s", record_date.strftime("%H:%M:%S"), record.get("price"))
                     
                     # If current time is before this record's time, use the previous price
                     if now < record_date:
+                        _LOGGER.debug("Current time %s is before record time %s, breaking", now.strftime("%H:%M:%S"), record_date.strftime("%H:%M:%S"))
                         break
                     
                     # If current time is at or after this record's time, use this price
                     current_price = record.get("price")
+                    _LOGGER.debug("Current time %s is at/after record time %s, using price: %s", now.strftime("%H:%M:%S"), record_date.strftime("%H:%M:%S"), current_price)
                     
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                _LOGGER.debug("Error parsing date '%s': %s", date_str, e)
                 continue
         
         # If we found a price for today, return it
         if current_price is not None:
+            _LOGGER.debug("Returning today's current price: %s", current_price)
             return current_price
         
         # If we're past today's last price, look for tomorrow's first price
         if last_today_price is not None:
+            _LOGGER.debug("Past today's last price, looking for tomorrow's first price")
             # We have today's data but we're past the last price
             # Look for tomorrow's first price
             for record in sorted_data:
@@ -131,13 +140,16 @@ class IbexBGAPI:
                     
                     # If this is tomorrow's data, use the first price
                     if record_date.date() > today:
+                        _LOGGER.debug("Found tomorrow's first price: %s", record.get("price"))
                         return record.get("price")
                         
                 except (ValueError, TypeError):
                     continue
         
         # If no price found for today or tomorrow, return the most recent price overall
-        return sorted_data[-1].get("price") if sorted_data else None
+        fallback_price = sorted_data[-1].get("price") if sorted_data else None
+        _LOGGER.debug("No current price found, returning fallback: %s", fallback_price)
+        return fallback_price
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
         """Calculate average price from the data."""

@@ -406,6 +406,64 @@ class IbexCurrentTimeBasedSensor(IbexBGSensor):
     def __init__(self, coordinator: IbexBGDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._update_timer = None
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to Home Assistant."""
+        await super().async_added_to_hass()
+        # Schedule the first update
+        self._schedule_next_update()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """When entity is removed from Home Assistant."""
+        if self._update_timer:
+            self._update_timer()
+            self._update_timer = None
+        await super().async_will_remove_from_hass()
+
+    def _schedule_next_update(self) -> None:
+        """Schedule the next update at the next 15-minute interval."""
+        from datetime import datetime, timedelta
+        
+        now = datetime.now()
+        
+        # Calculate the next 15-minute interval
+        # Round up to the next 15-minute mark
+        minutes_since_hour = now.minute
+        next_15_min = ((minutes_since_hour // 15) + 1) * 15
+        
+        if next_15_min >= 60:
+            # Next hour
+            next_update = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        else:
+            # Same hour
+            next_update = now.replace(minute=next_15_min, second=0, microsecond=0)
+        
+        # Calculate delay in seconds
+        delay = (next_update - now).total_seconds()
+        
+        _LOGGER.info("Scheduling current price sensor update in %.1f seconds (at %s)", 
+                    delay, next_update.strftime("%H:%M:%S"))
+        
+        # Cancel existing timer if any
+        if self._update_timer:
+            self._update_timer()
+        
+        # Schedule the update
+        self._update_timer = self.hass.loop.call_later(
+            delay, 
+            self._force_update
+        )
+
+    def _force_update(self) -> None:
+        """Force the sensor to update its state."""
+        _LOGGER.info("Forcing current price sensor update at scheduled time")
+        
+        # Force the sensor to update its state
+        self.async_schedule_update_ha_state()
+        
+        # Schedule the next update
+        self._schedule_next_update()
 
 
 class IbexCurrentPriceSensor(IbexCurrentTimeBasedSensor):
@@ -424,10 +482,13 @@ class IbexCurrentPriceSensor(IbexCurrentTimeBasedSensor):
     def native_value(self) -> float | None:
         """Return the current price based on current time from prices list."""
         if not self.coordinator.data or not self.coordinator.data.get("prices"):
+            _LOGGER.debug("No price data available for current price sensor")
             return None
         
         # Get current price directly from the prices list based on current time
-        return self.coordinator.api.get_current_price(self.coordinator.data["prices"])
+        current_price = self.coordinator.api.get_current_price(self.coordinator.data["prices"])
+        _LOGGER.debug("Current price sensor queried - returning: %s", current_price)
+        return current_price
 
 
 class IbexCurrentPercentageSensor(IbexCurrentTimeBasedSensor):
