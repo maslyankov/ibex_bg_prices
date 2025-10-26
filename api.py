@@ -171,35 +171,55 @@ class IbexBGAPI:
         return fallback_price
 
     def get_average_price(self, data: list[dict[str, Any]]) -> float | None:
-        """Calculate average price from the data."""
+        """Calculate average price from today's data only."""
         if not data:
             return None
         
-        prices = [record.get("price", 0) for record in data if record.get("price")]
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        prices = [record.get("price", 0) for record in today_data if record.get("price")]
         return sum(prices) / len(prices) if prices else None
 
     def get_min_price(self, data: list[dict[str, Any]]) -> float | None:
-        """Get minimum price from the data."""
+        """Get minimum price from today's data only."""
         if not data:
             return None
         
-        prices = [record.get("price", 0) for record in data if record.get("price")]
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        prices = [record.get("price", 0) for record in today_data if record.get("price")]
         return min(prices) if prices else None
 
     def get_max_price(self, data: list[dict[str, Any]]) -> float | None:
-        """Get maximum price from the data."""
+        """Get maximum price from today's data only."""
         if not data:
             return None
         
-        prices = [record.get("price", 0) for record in data if record.get("price")]
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        prices = [record.get("price", 0) for record in today_data if record.get("price")]
         return max(prices) if prices else None
 
     def get_total_volume(self, data: list[dict[str, Any]]) -> float | None:
-        """Calculate total volume from the data."""
+        """Calculate total volume from today's data only."""
         if not data:
             return None
         
-        volumes = [record.get("volume", 0) for record in data if record.get("volume")]
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        volumes = [record.get("volume", 0) for record in today_data if record.get("volume")]
         return sum(volumes) if volumes else None
 
     def get_next_hour_price(self, data: list[dict[str, Any]]) -> float | None:
@@ -263,30 +283,40 @@ class IbexBGAPI:
         return (current_price / max_price) * 100
 
     def get_time_of_highest_price(self, data: list[dict[str, Any]]) -> str | None:
-        """Get the time of the highest price."""
+        """Get the time of the highest price from today's data only."""
         if not data:
             return None
         
-        max_price = self.get_max_price(data)
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        max_price = self.get_max_price(today_data)
         if max_price is None:
             return None
         
-        for record in data:
+        for record in today_data:
             if record.get("price") == max_price:
                 return record.get("date")
         
         return None
 
     def get_time_of_lowest_price(self, data: list[dict[str, Any]]) -> str | None:
-        """Get the time of the lowest price."""
+        """Get the time of the lowest price from today's data only."""
         if not data:
             return None
         
-        min_price = self.get_min_price(data)
+        # Filter data to only include today's prices
+        today_data = self._filter_today_data(data)
+        if not today_data:
+            return None
+        
+        min_price = self.get_min_price(today_data)
         if min_price is None:
             return None
         
-        for record in data:
+        for record in today_data:
             if record.get("price") == min_price:
                 return record.get("date")
         
@@ -378,3 +408,33 @@ class IbexBGAPI:
             return record_date.date() == tomorrow
         except (ValueError, TypeError):
             return False
+
+    def _filter_today_data(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Filter data to only include today's prices."""
+        if not data:
+            return []
+        
+        from datetime import datetime
+        today = datetime.now().date()
+        
+        today_data = []
+        for record in data:
+            try:
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                # Handle different date formats
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # Only include records for today
+                if record_date.date() == today:
+                    today_data.append(record)
+                    
+            except (ValueError, TypeError):
+                continue
+        
+        return today_data
