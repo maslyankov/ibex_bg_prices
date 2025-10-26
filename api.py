@@ -260,3 +260,40 @@ class IbexBGAPI:
             }
             for record in sorted_data
         ]
+
+    def get_next_price_change_time(self, data: list[dict[str, Any]]) -> datetime | None:
+        """Get the next price change time from the data."""
+        if not data:
+            return None
+        
+        from datetime import datetime
+        now = datetime.now()
+        
+        # Sort data by time
+        def get_date_key(record):
+            return record.get("date", record.get("time", ""))
+        
+        sorted_data = sorted(data, key=get_date_key)
+        
+        # Find the next price change after current time
+        for record in sorted_data:
+            try:
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                # Handle different date formats
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # If this record is in the future (after current time), return it
+                if record_date > now:
+                    return record_date
+                    
+            except (ValueError, TypeError):
+                continue
+        
+        # No future price changes found
+        return None

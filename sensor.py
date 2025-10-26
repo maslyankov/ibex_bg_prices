@@ -78,12 +78,12 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("Invalid time format in configuration, using default")
             self.update_time = datetime.strptime(DEFAULT_UPDATE_TIME, "%H:%M").time()
         
-        # Set update interval to ensure current price updates regularly
+        # Set initial update interval - will be adjusted dynamically based on price changes
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=15),  # Update every 15 minutes to ensure current price is accurate
+            update_interval=timedelta(minutes=15),  # Initial interval, will be adjusted dynamically
         )
 
     def _should_fetch_today(self) -> bool:
@@ -218,6 +218,59 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
         
         return cleaned_prices
 
+    def _calculate_optimal_update_interval(self, prices: list[dict]) -> timedelta:
+        """Calculate optimal update interval based on price change frequency."""
+        if not prices:
+            return timedelta(minutes=15)  # Default fallback
+        
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        # Sort prices by time
+        def get_date_key(record):
+            return record.get("date", record.get("time", ""))
+        
+        sorted_prices = sorted(prices, key=get_date_key)
+        
+        # Find the next few price changes to determine optimal interval
+        next_changes = []
+        for record in sorted_prices:
+            try:
+                date_str = record.get("date", record.get("time", ""))
+                if not date_str:
+                    continue
+                
+                if "T" in date_str:
+                    record_date = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                else:
+                    record_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                
+                # If this record is in the future, add to next changes
+                if record_date > now:
+                    next_changes.append(record_date)
+                    if len(next_changes) >= 3:  # Look at next 3 changes
+                        break
+                        
+            except (ValueError, TypeError):
+                continue
+        
+        if not next_changes:
+            return timedelta(minutes=15)  # Default fallback
+        
+        # Calculate intervals between price changes
+        intervals = []
+        for i in range(len(next_changes) - 1):
+            interval = next_changes[i + 1] - next_changes[i]
+            intervals.append(interval.total_seconds())
+        
+        if intervals:
+            # Use the minimum interval, but cap it between 1 minute and 30 minutes
+            min_interval_seconds = min(intervals)
+            optimal_seconds = max(60, min(min_interval_seconds, 1800))  # 1 min to 30 min
+            return timedelta(seconds=optimal_seconds)
+        
+        return timedelta(minutes=15)  # Default fallback
+
     async def _async_update_data(self) -> dict:
         """Update data via library."""
         now = datetime.now()
@@ -265,7 +318,8 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
                     self.retry_count += 1
                     _LOGGER.warning(f"No data received, will retry in {self.retry_interval} minutes (attempt {self.retry_count}/{self.retry_attempts})")
                     # Schedule retry - but don't make it too frequent
-                    self.update_interval = timedelta(minutes=max(self.retry_interval, 15))
+                    retry_interval = timedelta(minutes=max(self.retry_interval, 15))
+                    self.update_interval = retry_interval
                     raise UpdateFailed("No data received, will retry")
                 else:
                     _LOGGER.error("No data received after all retry attempts")
@@ -278,9 +332,13 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             # Success - reset retry count and update last fetch date
             self.retry_count = 0
             self.last_fetch_date = today
-            self.update_interval = timedelta(minutes=15)  # Back to 15-minute updates
             
-            _LOGGER.info("Successfully fetched IBEX BG prices - merged data: %d records", len(merged_prices))
+            # Calculate optimal update interval based on price change frequency
+            optimal_interval = self._calculate_optimal_update_interval(merged_prices)
+            self.update_interval = optimal_interval
+            
+            _LOGGER.info("Successfully fetched IBEX BG prices - merged data: %d records, optimal update interval: %s", 
+                        len(merged_prices), optimal_interval)
             return {
                 "prices": merged_prices,
                 "average_price": self.api.get_average_price(merged_prices),
@@ -297,7 +355,8 @@ class IbexBGDataUpdateCoordinator(DataUpdateCoordinator):
             if self._should_retry():
                 self.retry_count += 1
                 _LOGGER.warning(f"Error fetching data, will retry in {self.retry_interval} minutes: {err}")
-                self.update_interval = timedelta(minutes=max(self.retry_interval, 15))
+                retry_interval = timedelta(minutes=max(self.retry_interval, 15))
+                self.update_interval = retry_interval
                 raise UpdateFailed(f"Error communicating with API, will retry: {err}")
             else:
                 _LOGGER.error(f"Error communicating with API after all retries: {err}")
@@ -422,13 +481,38 @@ class IbexCurrentTimeBasedSensor(IbexBGSensor):
         await super().async_will_remove_from_hass()
 
     def _schedule_next_update(self) -> None:
-        """Schedule the next update at the next 15-minute interval."""
+        """Schedule the next update at the next price change time."""
         from datetime import datetime, timedelta
         
         now = datetime.now()
         
+        # Try to get the next price change time from available data
+        next_price_change = self._get_next_price_change_time()
+        
+        if next_price_change:
+            # Calculate delay to next price change
+            delay = (next_price_change - now).total_seconds()
+            
+            # Only schedule if the next change is within a reasonable timeframe (next 24 hours)
+            if 0 < delay <= 86400:  # 24 hours in seconds
+                _LOGGER.info("Scheduling current price sensor update in %.1f seconds (at %s) - next price change", 
+                            delay, next_price_change.strftime("%Y-%m-%d %H:%M:%S"))
+                
+                # Cancel existing timer if any
+                if self._update_timer:
+                    self._update_timer()
+                
+                # Schedule the update
+                self._update_timer = self.hass.loop.call_later(
+                    delay, 
+                    self._force_update
+                )
+                return
+        
+        # Fallback to 15-minute intervals if no price data or next change is too far
+        _LOGGER.debug("No price change time found or too far in future, using 15-minute fallback")
+        
         # Calculate the next 15-minute interval
-        # Round up to the next 15-minute mark
         minutes_since_hour = now.minute
         next_15_min = ((minutes_since_hour // 15) + 1) * 15
         
@@ -442,7 +526,7 @@ class IbexCurrentTimeBasedSensor(IbexBGSensor):
         # Calculate delay in seconds
         delay = (next_update - now).total_seconds()
         
-        _LOGGER.info("Scheduling current price sensor update in %.1f seconds (at %s)", 
+        _LOGGER.info("Scheduling current price sensor update in %.1f seconds (at %s) - fallback interval", 
                     delay, next_update.strftime("%H:%M:%S"))
         
         # Cancel existing timer if any
@@ -454,6 +538,17 @@ class IbexCurrentTimeBasedSensor(IbexBGSensor):
             delay, 
             self._force_update
         )
+
+    def _get_next_price_change_time(self) -> datetime | None:
+        """Get the next price change time from available price data."""
+        if not self.coordinator.data or not self.coordinator.data.get("prices"):
+            return None
+        
+        # Use the API method to get the next price change time
+        next_change = self.coordinator.api.get_next_price_change_time(self.coordinator.data["prices"])
+        if next_change:
+            _LOGGER.debug("Next price change found at %s", next_change.strftime("%Y-%m-%d %H:%M:%S"))
+        return next_change
 
     def _force_update(self) -> None:
         """Force the sensor to update its state."""
